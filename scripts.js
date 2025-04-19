@@ -13,8 +13,10 @@ const iifAchievedPointsInput = document.getElementById('iif-achieved-points');
 const includeCorePcn = document.getElementById('include-core-pcn');
 const includeExtendedAccess = document.getElementById('include-extended-access');
 const includeCareHome = document.getElementById('include-care-home');
-const includeCapacity = document.getElementById('include-capacity');
-const useCaipLocal = document.getElementById('use-caip-local');
+const includeCasp = document.getElementById('include-casp');
+const includeCaip = document.getElementById('include-caip');
+const caipDomain1 = document.getElementById('caip-domain1');
+const caipDomain2 = document.getElementById('caip-domain2');
 const includeArrs = document.getElementById('include-arrs');
 const includeIif = document.getElementById('include-iif');
 const includeParticipation = document.getElementById('include-participation');
@@ -26,8 +28,6 @@ const totalFundingSpan = document.getElementById('total-funding');
 const monthlyFundingSpan = document.getElementById('monthly-funding');
 const quarterlyFundingSpan = document.getElementById('quarterly-funding');
 const fundingComponentsTable = document.getElementById('funding-components').querySelector('tbody');
-const quarterlyBreakdownTable = document.getElementById('quarterly-breakdown').querySelector('tbody');
-const monthlyBreakdownTable = document.getElementById('monthly-breakdown').querySelector('tbody');
 const practiceBreakdownTable = document.getElementById('practice-breakdown').querySelector('tbody');
 const fundingChart = document.getElementById('funding-chart');
 const pcnModal = document.getElementById('pcn-modal');
@@ -49,7 +49,8 @@ const FUNDING_RATES = {
     CORE_PCN_ADJUSTED: 0.733,
     EXTENDED_ACCESS: 8.427,
     CARE_HOME_PREMIUM: 130.253,
-    CAPACITY_SUPPORT: 3.208,
+    CASP: 2.246,
+    CAIP_PER_DOMAIN: 0.481,
     ARRS_RATE: 26.631,
     IIF_POINT_VALUE: 198,
     PARTICIPATION_FUND: 1.761
@@ -61,8 +62,13 @@ let savedHistoricalAdjustmentFactor = DEFAULT_ADJUSTMENT_FACTOR * 100;
 let savedHistoricalWeightingFactor = DEFAULT_WEIGHTING_FACTOR * 100;
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadPcnDataFromCsv();
-    setupEventListeners();
+    try {
+        loadPcnDataFromCsv();
+        setupEventListeners();
+    } catch (error) {
+        console.error('Initialization error:', error);
+        alert('Failed to initialize the calculator. Please check the console for details.');
+    }
 });
 
 async function loadPcnDataFromCsv() {
@@ -73,96 +79,90 @@ async function loadPcnDataFromCsv() {
             throw new Error(`Failed to fetch CSV: ${response.status} ${response.statusText}`);
         }
         const csvText = await response.text();
+        if (!csvText.trim()) {
+            throw new Error('CSV file is empty');
+        }
         pcnData = parseCsvData(csvText);
+        if (pcnData.length === 0) {
+            throw new Error('No valid PCN data parsed from CSV');
+        }
+        console.log('PCN Data Loaded:', pcnData);
         populateRegions();
-        loadingSpinner.style.display = 'none';
     } catch (error) {
         console.error('Error loading PCN data:', error);
-        alert('Failed to load PCN data. Please try refreshing the page.');
+        alert(`Failed to load PCN data: ${error.message}. Please check the console for details and ensure the CSV file is available.`);
+    } finally {
         loadingSpinner.style.display = 'none';
     }
 }
 
-function updateFundingChart(core, extended, care, capacity, arrs, iif, participation) {
-    console.log('updateFundingChart called — core:', core, 'extended:', extended, '…');
-    // existing chart setup…
-  }
-
 function parseCsvData(csvText) {
-    const lines = csvText.split('\n');
-    const headers = lines[0].split(',');
-    console.log('CSV Headers:', headers);
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
+    const headers = lines[0].split(',').map(h => h.replace(/^\uFEFF/, '').trim());
 
-    const practiceCodeIndex = headers.findIndex(h => h.trim() === 'Practice Code');
-    const practiceNameIndex = headers.findIndex(h => h.trim() === 'Practice Name');
-    const pcnCodeIndex = headers.findIndex(h => h.trim() === 'PCN Code');
-    const pcnNameIndex = headers.findIndex(h => h.trim() === 'PCN Name');
-    const regionIndex = headers.findIndex(h => h.trim() === 'Region');
-    const rawListSizeIndex = headers.findIndex(h => h.trim() === 'Raw list size 2024/25');
-    const adjustedPopulationIndex = headers.findIndex(h => h.trim() === 'Adjusted Population 2024/25');
-    const weightedPopulationIndex = headers.findIndex(h => h.trim() === 'weighted population 2024/25');
-    const rawListSize2025Index = headers.findIndex(h => h.trim() === 'Raw list size as of 01/01/25');
+    console.log('Parsed CSV headers:', headers);
+    
+    const practiceCodeIndex = headers.findIndex(h => h === 'Practice Code');
+    const practiceNameIndex = headers.findIndex(h => h === 'Practice Name');
+    const pcnCodeIndex = headers.findIndex(h => h === 'PCN Code');
+    const pcnNameIndex = headers.findIndex(h => h === 'PCN Name');
+    const regionIndex = headers.findIndex(h => h === 'Region');
+    const rawListSize2025Index = headers.findIndex(h => h === 'Raw list size as of 01/01/25');
+    const rawListSizeIndex = headers.findIndex(h => h === 'Raw list size 2024/25');
+    const adjustedPopulationIndex = headers.findIndex(h => h === 'Adjusted Population 2024/25');
+    const weightedPopulationIndex = headers.findIndex(h => h === 'weighted population 2024/25');
 
-    console.log('Column Indices:', { rawListSize2025Index });
-    if (rawListSize2025Index === -1) {
-        console.error('Error: "Raw list size as of 01/01/25" column not found.');
-        alert('Error: Missing "Raw list size as of 01/01/25" column in data.');
+    const missing = [];
+    if (practiceCodeIndex < 0) missing.push('Practice Code');
+    if (practiceNameIndex < 0) missing.push('Practice Name');
+    if (pcnCodeIndex < 0) missing.push('PCN Code');
+    if (pcnNameIndex < 0) missing.push('PCN Name');
+    if (regionIndex < 0) missing.push('Region');
+    if (rawListSize2025Index < 0) missing.push('Raw list size as of 01/01/25');
+    if (missing.length) {
+        console.error('Missing required CSV columns:', missing);
+        alert('Error: Missing required columns:\n' + missing.join(', '));
+        return [];
     }
 
     const pcns = [];
     const pcnMap = new Map();
 
     for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+        const values = lines[i].split(',');
+        if (values.length <= rawListSize2025Index) continue;
 
-        const values = line.split(',');
         const practiceCode = values[practiceCodeIndex]?.trim() || '';
         const practiceName = values[practiceNameIndex]?.trim() || '';
         const pcnCode = values[pcnCodeIndex]?.trim() || '';
         const pcnName = values[pcnNameIndex]?.trim() || '';
         const region = values[regionIndex]?.trim() || '';
-        const rawListSize = parseFloat(values[rawListSizeIndex]) || 0;
-        const adjustedPopulation = parseFloat(values[adjustedPopulationIndex]) || 0;
-        const weightedPopulation = parseFloat(values[weightedPopulationIndex]) || 0;
-        const rawListSize2025 = parseFloat(values[rawListSize2025Index]) || 0;
+        const raw2025 = parseFloat(values[rawListSize2025Index]) || 0;
+        const raw2024 = parseFloat(values[rawListSizeIndex] || '') || 0;
+        const adjPop = parseFloat(values[adjustedPopulationIndex] || '') || 0;
+        const wtPop = parseFloat(values[weightedPopulationIndex] || '') || 0;
 
-        if (i <= 3) {
-            console.log(`Row ${i} rawListSize2025:`, rawListSize2025);
-        }
-
-        const historicalAdjustmentFactor = rawListSize > 0
-            ? (adjustedPopulation / rawListSize) - 1
-            : DEFAULT_ADJUSTMENT_FACTOR;
-        const historicalWeightingFactor = rawListSize > 0
-            ? (weightedPopulation / rawListSize) - 1
-            : DEFAULT_WEIGHTING_FACTOR;
+        const histAdj = raw2024 > 0 ? (adjPop/raw2024) - 1 : DEFAULT_ADJUSTMENT_FACTOR;
+        const histWt = raw2024 > 0 ? (wtPop /raw2024) - 1 : DEFAULT_WEIGHTING_FACTOR;
 
         if (!pcnCode || !pcnName) continue;
 
         const practice = {
             practiceCode,
             practiceName,
-            rawListSize,
-            adjustedPopulation,
-            weightedPopulation,
-            historicalAdjustmentFactor,
-            historicalWeightingFactor,
-            rawListSize2025
+            rawListSize: raw2025,
+            rawListSize2025: raw2025,
+            adjustedPopulation: adjPop,
+            weightedPopulation: wtPop,
+            historicalAdjustmentFactor: histAdj,
+            historicalWeightingFactor: histWt
         };
 
-        if (pcnMap.has(pcnCode)) {
-            pcnMap.get(pcnCode).practices.push(practice);
-        } else {
-            const pcn = {
-                pcnCode,
-                pcnName,
-                region,
-                practices: [practice]
-            };
-            pcns.push(pcn);
-            pcnMap.set(pcnCode, pcn);
+        if (!pcnMap.has(pcnCode)) {
+            pcnMap.set(pcnCode, { pcnCode, pcnName, region, practices: [] });
+            pcns.push(pcnMap.get(pcnCode));
         }
+        pcnMap.get(pcnCode).practices.push(practice);
     }
 
     return pcns;
@@ -190,133 +190,142 @@ function populateRegions() {
 }
 
 function setupEventListeners() {
-    regionSelect.addEventListener('change', function() {
+    console.log('Setting up event listeners...');
+    if (!calculateBtn) {
+        console.error('Calculate button not found');
+        alert('Calculator error: Calculate button not found.');
+        return;
+    }
+    if (!includeCasp || !includeCaip || !caipDomain1 || !caipDomain2) {
+        console.error('One or more CAP checkbox elements not found');
+        alert('Calculator error: Missing CAP checkbox elements. Please check the console.');
+        return;
+    }
+
+    regionSelect.addEventListener('change', () => {
         pcnDisplayInput.value = '';
         pcnNameHidden.value = '';
         pcnCodeInput.value = '';
     });
-
-    pcnDisplayInput.addEventListener('click', function() {
-        openPcnModal();
-    });
-
+    pcnDisplayInput.addEventListener('click', openPcnModal);
     calculateBtn.addEventListener('click', calculateFunding);
     fillExampleBtn.addEventListener('click', fillExampleData);
-    exportPdfBtn.addEventListener('click', exportAsPdf);
-    exportCsvBtn.addEventListener('click', exportAsCsv);
 
-    includeHistoricalFactors.addEventListener('change', function() {
-        updateListSizes();
-    });
-
-    rawListSizeInput.addEventListener('input', function() {
-        updateListSizes();
-    });
-
-    historicalAdjustmentFactorInput.addEventListener('input', function() {
-        savedHistoricalAdjustmentFactor = parseFloat(this.value) || 0;
-        updateListSizes();
-    });
-
-    historicalWeightingFactorInput.addEventListener('input', function() {
-        savedHistoricalWeightingFactor = parseFloat(this.value) || 0;
-        updateListSizes();
-    });
-
-    function updateFundingChart(core, extended, care, capacity, arrs, iif, participation) {
-        // 1. Grab the canvas
-        const canvas = document.getElementById('funding-chart');
-        console.log('⚙️ canvas element:', canvas);
-        console.log('⚙️ is HTMLCanvasElement?', canvas instanceof HTMLCanvasElement);
-        if (!canvas) {
-          console.error('❌ Canvas #funding-chart not found!');
-          return;
+    exportPdfBtn.addEventListener('click', () => {
+        console.log('Export PDF button clicked');
+        if (!pieChart || !fundingChart.getContext('2d') || !totalFundingSpan.textContent || !fundingComponentsTable.rows.length) {
+            alert('Please calculate funding first to generate the PDF.');
+            return;
         }
-      
-        // 2. Get its 2D context
-        const ctx = canvas.getContext && canvas.getContext('2d');
-        console.log('⚙️ 2D context:', ctx);
-        if (!ctx) {
-          console.error('❌ Could not get 2D context from canvas');
-          return;
+        const pcn = pcnNameHidden.value || '—';
+        const date = new Date().toLocaleDateString('en-GB');
+        document.querySelector('.print-meta').textContent = `PCN: ${pcn}  |  Date: ${date}`;
+        const pcnSelected = pcnData.find(p => p.pcnCode === pcnCodeInput.value) || { practices: [] };
+        const practiceListSizes = [
+            {
+                name: 'PCN Total',
+                raw: parseFloat(rawListSizeInput.value) || 0,
+                adjusted: parseFloat(adjustedListSizeInput.value) || 0,
+                weighted: parseFloat(weightedListSizeInput.value) || 0
+            },
+            ...pcnSelected.practices.map(practice => ({
+                name: practice.practiceName || 'Unknown Practice',
+                raw: practice.rawListSize || 0,
+                adjusted: practice.adjustedPopulation || 0,
+                weighted: practice.weightedPopulation || 0
+            }))
+        ];
+        console.log('practiceListSizes for PDF export:', practiceListSizes);
+        if (practiceListSizes.length === 1) {
+            console.warn('Only PCN Total available; no practice data for PCN:', pcnCodeInput.value);
         }
-      
-        // 3. Destroy old chart if there is one
-        if (pieChart) {
-          pieChart.destroy();
+        if (typeof window.exportAsPdf === 'function') {
+            window.exportAsPdf({
+                totalFundingSpan,
+                monthlyFundingSpan,
+                quarterlyFundingSpan,
+                fundingComponentsTable,
+                practiceBreakdownTable,
+                fundingChart,
+                pcnNameHidden,
+                practiceListSizes
+            });
+        } else {
+            console.error('exportAsPdf is not available on window');
+            alert('PDF export functionality is not available. Please ensure export.js is loaded.');
         }
-      
-        // 4. Create the pie chart
-        pieChart = new Chart(ctx, {
-          type: 'pie',
-          data: {
-            labels: [
-              'Core PCN',
-              'Enhanced Access',
-              'Care Home',
-              'Capacity',
-              'ARRS',
-              'IIF',
-              'Participation'
-            ],
-            datasets: [{
-              data: [core, extended, care, capacity, arrs, iif, participation]
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false
-          }
+    });
+
+    exportCsvBtn.addEventListener('click', () => {
+        console.log('Export CSV button clicked');
+        if (!totalFundingSpan.textContent || !fundingComponentsTable.rows.length) {
+            alert('Please calculate funding first to generate the CSV.');
+            return;
+        }
+        if (typeof window.exportAsCsv === 'function') {
+            window.exportAsCsv({
+                totalFundingSpan,
+                monthlyFundingSpan,
+                quarterlyFundingSpan,
+                fundingComponentsTable,
+                practiceBreakdownTable,
+                pcnNameHidden
+            });
+        } else {
+            console.error('exportAsCsv is not available on window');
+            alert('CSV export functionality is not available. Please ensure export.js is loaded.');
+        }
+    });
+
+    includeHistoricalFactors.addEventListener('change', updateListSizes);
+    rawListSizeInput.addEventListener('input', updateListSizes);
+    historicalAdjustmentFactorInput.addEventListener('input', e => {
+        savedHistoricalAdjustmentFactor = parseFloat(e.target.value) || 0;
+        updateListSizes();
+    });
+    historicalWeightingFactorInput.addEventListener('input', e => {
+        savedHistoricalWeightingFactor = parseFloat(e.target.value) || 0;
+        updateListSizes();
+    });
+
+    includeCasp.addEventListener('change', calculateFunding);
+    includeCaip.addEventListener('change', calculateFunding);
+    caipDomain1.addEventListener('change', calculateFunding);
+    caipDomain2.addEventListener('change', calculateFunding);
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            tabs.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            const pane = document.getElementById(this.dataset.tab);
+            if (pane) pane.classList.add('active');
+            if (this.dataset.tab === 'chart-tab' && pieChart) {
+                setTimeout(() => {
+                    pieChart.resize();
+                    pieChart.update();
+                }, 50);
+            }
         });
-      }
-
-function setupEventListeners() {
-  // …other listeners…
-
-  tabs.forEach(tab => {
-    tab.addEventListener('click', function() {
-      // switch active classes on tabs
-      tabs.forEach(t => t.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
-      this.classList.add('active');
-
-      // safely activate the matching pane
-      const tabId = this.dataset.tab;
-      const content = document.getElementById(tabId);
-      if (content) content.classList.add('active');
-
-      // if it’s the Chart tab, redraw after it’s visible
-      if (tabId === 'chart-tab' && pieChart) {
-        setTimeout(() => {
-          pieChart.resize();
-          pieChart.update();
-        }, 50);
-      }
     });
-  });
-}
 
-      
-
-    document.querySelectorAll('.close').forEach(closeBtn => {
-        closeBtn.addEventListener('click', function() {
-            const modal = this.closest('.modal, .terms-modal, .privacy-modal, .contact-modal');
+    document.querySelectorAll('.close').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const modal = btn.closest('.modal, .terms-modal, .privacy-modal, .contact-modal');
             if (modal) modal.style.display = 'none';
         });
     });
-
-    window.addEventListener('click', function(event) {
-        if (event.target.classList.contains('modal') || 
-            event.target.classList.contains('terms-modal') || 
-            event.target.classList.contains('privacy-modal') || 
-            event.target.classList.contains('contact-modal')) {
+    window.addEventListener('click', event => {
+        if (
+            event.target.classList.contains('modal') ||
+            event.target.classList.contains('terms-modal') ||
+            event.target.classList.contains('privacy-modal') ||
+            event.target.classList.contains('contact-modal')
+        ) {
             event.target.style.display = 'none';
         }
     });
-
-    pcnModalSearch.addEventListener('input', function() {
-        filterPcnList(this.value);
-    });
+    pcnModalSearch.addEventListener('input', filterPcnList);
 }
 
 function openPcnModal() {
@@ -343,9 +352,11 @@ function openPcnModal() {
     pcnModal.style.display = 'block';
 }
 
-function filterPcnList(searchText) {
-    const pcnItems = pcnList.querySelectorAll('.pcn-item');
+function filterPcnList(event) {
+    const searchText = event.target.value || '';
     const searchLower = searchText.toLowerCase();
+    const pcnItems = pcnList.querySelectorAll('.pcn-item');
+    
     pcnItems.forEach(item => {
         const pcnName = item.textContent.toLowerCase();
         const pcnCode = item.dataset.pcnCode.toLowerCase();
@@ -442,17 +453,25 @@ function updateListSizes() {
 }
 
 function calculateFunding() {
+    console.log('calculateFunding called');
+    if (!includeCasp || !includeCaip || !caipDomain1 || !caipDomain2 || !calculateBtn) {
+        console.error('One or more critical elements not found');
+        alert('Calculator error: Missing critical elements. Please check the console.');
+        return;
+    }
+
     const rawListSize = parseFloat(rawListSizeInput.value) || 0;
     const adjustedListSize = parseFloat(adjustedListSizeInput.value) || 0;
     const weightedListSize = parseFloat(weightedListSizeInput.value) || 0;
     const careHomeBedCount = parseFloat(careHomeBeds.value) || 0;
     const iifAchievedPoints = parseFloat(iifAchievedPointsInput.value) || 0;
-
     const includeCorePcnChecked = includeCorePcn.checked;
     const includeExtendedAccessChecked = includeExtendedAccess.checked;
     const includeCareHomeChecked = includeCareHome.checked;
-    const includeCapacityChecked = includeCapacity.checked;
-    const useCaipLocalChecked = useCaipLocal.checked;
+    const includeCaspChecked = includeCasp.checked;
+    const includeCaipChecked = includeCaip.checked;
+    const caipDomain1Checked = caipDomain1.checked;
+    const caipDomain2Checked = caipDomain2.checked;
     const includeArrsChecked = includeArrs.checked;
     const includeIifChecked = includeIif.checked;
     const includeParticipationChecked = includeParticipation.checked;
@@ -469,8 +488,13 @@ function calculateFunding() {
         FUNDING_RATES.CARE_HOME_PREMIUM * careHomeBedCount : 
         0;
         
-    const capacityFunding = includeCapacityChecked ? 
-        FUNDING_RATES.CAPACITY_SUPPORT * (useCaipLocalChecked ? rawListSize : adjustedListSize) : 
+    const caspFunding = includeCaspChecked ? 
+        FUNDING_RATES.CASP * adjustedListSize : 
+        0;
+        
+    const caipFunding = includeCaipChecked ? 
+        ((caipDomain1Checked ? FUNDING_RATES.CAIP_PER_DOMAIN : 0) + 
+         (caipDomain2Checked ? FUNDING_RATES.CAIP_PER_DOMAIN : 0)) * adjustedListSize : 
         0;
         
     const arrsFunding = includeArrsChecked ?
@@ -486,7 +510,7 @@ function calculateFunding() {
         0;
 
     const totalFunding = corePcnFunding + extendedAccessFunding + careHomeFunding + 
-                         capacityFunding + arrsFunding + iifFunding + participationFunding;
+                        caspFunding + caipFunding + arrsFunding + iifFunding + participationFunding;
 
     const monthlyFunding = totalFunding / 12;
     const quarterlyFunding = totalFunding / 4;
@@ -497,89 +521,112 @@ function calculateFunding() {
 
     fundingComponentsTable.innerHTML = '';
 
+    let runningTotal = 0;
+
     if (includeCorePcnChecked) {
         addFundingComponent(
-          'Core PCN Funding',
-          corePcnFunding,
-          `£${FUNDING_RATES.CORE_PCN_RAW} × ${rawListSize.toLocaleString()} (raw) + ` +
-          `£${FUNDING_RATES.CORE_PCN_ADJUSTED} × ${adjustedListSize.toLocaleString()} (adjusted)`
+            'Core PCN Funding',
+            corePcnFunding,
+            `£${FUNDING_RATES.CORE_PCN_RAW} × ${rawListSize.toLocaleString()} (raw) + ` +
+            `£${FUNDING_RATES.CORE_PCN_ADJUSTED} × ${adjustedListSize.toLocaleString()} (adjusted)`
         );
-      }
+        runningTotal += corePcnFunding;
+    }
     
-      if (includeExtendedAccessChecked) {
+    if (includeExtendedAccessChecked) {
         addFundingComponent(
-          'Enhanced Access Payment',
-          extendedAccessFunding,
-          `£${FUNDING_RATES.EXTENDED_ACCESS} × ${adjustedListSize.toLocaleString()} (adjusted)`
+            'Enhanced Access Payment',
+            extendedAccessFunding,
+            `£${FUNDING_RATES.EXTENDED_ACCESS} × ${adjustedListSize.toLocaleString()} (adjusted)`
         );
-      }
-      
-      if (includeCareHomeChecked) {
+        runningTotal += extendedAccessFunding;
+    }
+    
+    if (includeCareHomeChecked) {
         addFundingComponent(
-          'Care Home Premium',
-          careHomeFunding,
-          `£${FUNDING_RATES.CARE_HOME_PREMIUM} × ${careHomeBedCount.toLocaleString()} (beds)`
+            'Care Home Premium',
+            careHomeFunding,
+            `£${FUNDING_RATES.CARE_HOME_PREMIUM} × ${careHomeBedCount.toLocaleString()} (beds)`
         );
-      }
-      
-      if (includeCapacityChecked || useCaipLocalChecked) {
-        const label = useCaipLocalChecked
-          ? 'Local CAIP Payment'
-          : 'Capacity and Access Support Payment';
-        const listUsed = useCaipLocalChecked ? rawListSize : adjustedListSize;
+        runningTotal += careHomeFunding;
+    }
+    
+    if (includeCaspChecked) {
         addFundingComponent(
-          label,
-          capacityFunding,
-          `£${FUNDING_RATES.CAPACITY_SUPPORT} × ${listUsed.toLocaleString()} ` +
-          `(${useCaipLocalChecked ? 'raw' : 'adjusted'})`
+            'Capacity and Access Support Payment',
+            caspFunding,
+            `£${FUNDING_RATES.CASP} × ${adjustedListSize.toLocaleString()} (adjusted)`
         );
-      }
-      
-      if (includeArrsChecked) {
+        runningTotal += caspFunding;
+    }
+    
+    if (includeCaipChecked) {
+        const caipDomains = (caipDomain1Checked ? 1 : 0) + (caipDomain2Checked ? 1 : 0);
+        const caipRate = caipDomains * FUNDING_RATES.CAIP_PER_DOMAIN;
         addFundingComponent(
-          'ARRS Funding',
-          arrsFunding,
-          `£${FUNDING_RATES.ARRS_RATE} × ${weightedListSize.toLocaleString()} (weighted)`
+            'Capacity and Access Improvement Payment',
+            caipFunding,
+            `£${caipRate.toFixed(3)} × ${adjustedListSize.toLocaleString()} (adjusted, ${caipDomains} domain${caipDomains === 1 ? '' : 's'})`
         );
-      }
-      
-      if (includeIifChecked) {
+        runningTotal += caipFunding;
+    }
+    
+    if (includeArrsChecked) {
         addFundingComponent(
-          'IIF Achievement',
-          iifFunding,
-          `£${FUNDING_RATES.IIF_POINT_VALUE} × ${iifAchievedPoints.toLocaleString()} (points)`
+            'ARRS Funding',
+            arrsFunding,
+            `£${FUNDING_RATES.ARRS_RATE} × ${weightedListSize.toLocaleString()} (weighted)`
         );
-      }
-      
-      if (includeParticipationChecked) {
+        runningTotal += arrsFunding;
+    }
+    
+    if (includeIifChecked) {
         addFundingComponent(
-          'Participation Fund (Practice Payment)',
-          participationFunding,
-          `£${FUNDING_RATES.PARTICIPATION_FUND} × ${weightedListSize.toLocaleString()} (weighted)`
+            'IIF Achievement',
+            iifFunding,
+            `£${FUNDING_RATES.IIF_POINT_VALUE} × ${iifAchievedPoints.toLocaleString()} (points)`
         );
-      }
+        runningTotal += iifFunding;
+    }
+    
+    if (includeParticipationChecked) {
+        addFundingComponent(
+            'Participation Fund (Practice Payment)',
+            participationFunding,
+            `£${FUNDING_RATES.PARTICIPATION_FUND} × ${weightedListSize.toLocaleString()} (weighted)`
+        );
+        runningTotal += participationFunding;
+    }
 
-    updateQuarterlyBreakdown(totalFunding);
-    updateMonthlyBreakdown(totalFunding);
+    const totalRow = document.createElement('tr');
+    const totalNameCell = document.createElement('td');
+    totalNameCell.textContent = 'Total';
+    totalNameCell.style.fontWeight = 'bold';
+    const totalAmountCell = document.createElement('td');
+    totalAmountCell.textContent = formatCurrency(runningTotal);
+    totalAmountCell.style.fontWeight = 'bold';
+    const totalFormulaCell = document.createElement('td');
+    totalFormulaCell.textContent = '';
+    totalRow.append(totalNameCell, totalAmountCell, totalFormulaCell);
+    fundingComponentsTable.appendChild(totalRow);
+
     updatePracticeBreakdown(
         rawListSize,
         corePcnFunding,
         extendedAccessFunding,
         careHomeFunding,
-        capacityFunding,
+        caspFunding + caipFunding,
         arrsFunding,
         iifFunding,
         participationFunding,
-        includeParticipationChecked  // pass the checkbox state
-      );
-      
-      
+        includeParticipationChecked
+    );
 
     updateFundingChart(
         includeCorePcnChecked ? corePcnFunding : 0,
         includeExtendedAccessChecked ? extendedAccessFunding : 0,
         includeCareHomeChecked ? careHomeFunding : 0,
-        includeCapacityChecked ? capacityFunding : 0,
+        (includeCaspChecked || includeCaipChecked) ? caspFunding + caipFunding : 0,
         includeArrsChecked ? arrsFunding : 0,
         includeIifChecked ? iifFunding : 0,
         includeParticipationChecked ? participationFunding : 0
@@ -589,133 +636,16 @@ function calculateFunding() {
     resultsContainer.scrollIntoView({ behavior: 'smooth' });
 }
 
-// 1) Rewrite addFundingComponent to accept a formula string:
 function addFundingComponent(name, amount, formula) {
     const row = document.createElement('tr');
-  
-    // Component Name
     const nameCell = document.createElement('td');
     nameCell.textContent = name;
-    row.appendChild(nameCell);
-  
-    // Amount
     const amountCell = document.createElement('td');
     amountCell.textContent = formatCurrency(amount);
-    row.appendChild(amountCell);
-  
-    // Formula
     const formulaCell = document.createElement('td');
     formulaCell.textContent = formula;
-    row.appendChild(formulaCell);
-  
+    row.append(nameCell, amountCell, formulaCell);
     fundingComponentsTable.appendChild(row);
-  }
-  
-  // Core PCN Funding
-  if (includeCorePcn.checked) {
-    addFundingComponent(
-      'Core PCN Funding',
-      corePcnFunding,
-      `£${FUNDING_RATES.CORE_PCN_RAW} x ${rawListSize.toLocaleString()} (raw) + ` +
-      `£${FUNDING_RATES.CORE_PCN_ADJUSTED} x ${adjustedListSize.toLocaleString()} (adjusted)`
-    );
-  }
-  
-  // Enhanced Access Payment
-  if (includeExtendedAccess.checked) {
-    addFundingComponent(
-      'Enhanced Access Payment',
-      extendedAccessFunding,
-      `£${FUNDING_RATES.EXTENDED_ACCESS}  ${adjustedListSize.toLocaleString()} (adjusted)`
-    );
-  }
-  
-  // Care Home Premium
-  if (includeCareHome.checked) {
-    addFundingComponent(
-      'Care Home Premium',
-      careHomeFunding,
-      `£${FUNDING_RATES.CARE_HOME_PREMIUM} x ${careHomeBeds.value || 0} (beds)`
-    );
-  }
-  
-  // Capacity & Local CAIP
-  if (includeCapacity.checked || useCaipLocal.checked) {
-    const label = useCaipLocal.checked
-      ? 'Local CAIP Payment'
-      : 'Capacity and Access Support Payment';
-    const listSizeUsed = useCaipLocal.checked
-      ? rawListSize
-      : adjustedListSize;
-    addFundingComponent(
-      label,
-      capacityFunding,
-      `£${FUNDING_RATES.CAPACITY_SUPPORT} x ${listSizeUsed.toLocaleString()} ` +
-      `(${useCaipLocal.checked ? 'raw' : 'adjusted'})`
-    );
-  }
-  
-  // ARRS Funding
-  if (includeArrs.checked) {
-    addFundingComponent(
-      'ARRS Funding',
-      arrsFunding,
-      `£${FUNDING_RATES.ARRS_RATE} x ${weightedListSize.toLocaleString()} (weighted)`
-    );
-  }
-  
-  // IIF Achievement
-  if (includeIif.checked) {
-    addFundingComponent(
-      'IIF Achievement',
-      iifFunding,
-      `£${FUNDING_RATES.IIF_POINT_VALUE} x ${iifAchievedPoints} (points)`
-    );
-  }
-  
-  // Participation Fund (Practice Payment)
-  if (includeParticipation.checked) {
-    addFundingComponent(
-      'Participation Fund (Practice Payment)',
-      participationFunding,
-      `£${FUNDING_RATES.PARTICIPATION_FUND} x ${weightedListSize.toLocaleString()} (weighted)`
-    );
-  }
-  
-  
-
-function updateQuarterlyBreakdown(totalFunding) {
-    quarterlyBreakdownTable.innerHTML = '';
-    const quarterlyAmount = totalFunding / 4;
-    for (let i = 1; i <= 4; i++) {
-        const row = document.createElement('tr');
-        const quarterCell = document.createElement('td');
-        quarterCell.textContent = `Quarter ${i}`;
-        row.appendChild(quarterCell);
-        const amountCell = document.createElement('td');
-        amountCell.textContent = formatCurrency(quarterlyAmount);
-        row.appendChild(amountCell);
-        quarterlyBreakdownTable.appendChild(row);
-    }
-}
-
-function updateMonthlyBreakdown(totalFunding) {
-    monthlyBreakdownTable.innerHTML = '';
-    const monthlyAmount = totalFunding / 12;
-    const months = [
-        'April', 'May', 'June', 'July', 'August', 'September',
-        'October', 'November', 'December', 'January', 'February', 'March'
-    ];
-    for (let i = 0; i < 12; i++) {
-        const row = document.createElement('tr');
-        const monthCell = document.createElement('td');
-        monthCell.textContent = months[i];
-        row.appendChild(monthCell);
-        const amountCell = document.createElement('td');
-        amountCell.textContent = formatCurrency(monthlyAmount);
-        row.appendChild(amountCell);
-        monthlyBreakdownTable.appendChild(row);
-    }
 }
 
 function updatePracticeBreakdown(
@@ -727,137 +657,215 @@ function updatePracticeBreakdown(
     arrsTotal,
     iifTotal,
     partTotal,
-    includePartChecked     // <-- new param
-  ) {
-    // 1) Build the header row
+    includePartChecked
+) {
     const headers = [
-      'Practice Name',
-      'Core PCN Funding',
-      'Enhanced Access Payment',
-      'Care Home Premium',
-      'Capacity and Access Support Payment',
-      'ARRS Funding',
-      'IIF Achievement'
+        'Practice Name',
+        'Core PCN Funding',
+        'Enhanced Access Payment',
+        'Care Home Premium',
+        'Capacity and Access Payment',
+        'ARRS Funding',
+        'IIF Achievement'
     ];
     if (includePartChecked) {
-      headers.push('Participation Fund (Practice Payment)');
+        headers.push('Participation Fund (Practice Payment)');
     }
-  
-    // Render <thead>
+
     practiceBreakdownTable.closest('table').querySelector('thead').innerHTML = `
-      <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+        <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
     `;
-  
-    // 2) Populate <tbody>
+
     practiceBreakdownTable.innerHTML = '';
     const pcn = pcnData.find(p => p.pcnCode === pcnCodeInput.value) || { practices: [] };
     if (pcn.practices.length === 0) {
-      practiceBreakdownTable.innerHTML = `
-        <tr>
-          <td colspan="${headers.length}" style="text-align:center">
-            No practice data available for this PCN.
-          </td>
-        </tr>
-      `;
-      return;
-    }
-  
-    pcn.practices
-      .sort((a, b) => a.practiceName.localeCompare(b.practiceName))
-      .forEach(practice => {
-        const share = practice.rawListSize / totalRawListSize;
-        const cells = [
-          practice.practiceName,
-          formatCurrency(coreTotal * share),
-          formatCurrency(extTotal  * share),
-          formatCurrency(careTotal * share),
-          formatCurrency(capTotal  * share),
-          formatCurrency(arrsTotal * share),
-          formatCurrency(iifTotal  * share)
-        ];
-        if (includePartChecked) {
-          cells.push(formatCurrency(partTotal * share));
-        }
-        practiceBreakdownTable.innerHTML += `
-          <tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>
+        practiceBreakdownTable.innerHTML = `
+            <tr>
+                <td colspan="${headers.length}" style="text-align:center">
+                    No practice data available for this PCN.
+                </td>
+            </tr>
         `;
-      });
-  }
-  
-  
+        return;
+    }
+
+    let totalCore = 0;
+    let totalExt = 0;
+    let totalCare = 0;
+    let totalCap = 0;
+    let totalArrs = 0;
+    let totalIif = 0;
+    let totalPart = 0;
+
+    pcn.practices
+        .sort((a, b) => a.practiceName.localeCompare(b.practiceName))
+        .forEach(practice => {
+            const share = practice.rawListSize / totalRawListSize;
+            const coreShare = coreTotal * share;
+            const extShare = extTotal * share;
+            const careShare = careTotal * share;
+            const capShare = capTotal * share;
+            const arrsShare = arrsTotal * share;
+            const iifShare = iifTotal * share;
+            const partShare = includePartChecked ? partTotal * share : 0;
+
+            totalCore += coreShare;
+            totalExt += extShare;
+            totalCare += careShare;
+            totalCap += capShare;
+            totalArrs += arrsShare;
+            totalIif += share;
+            if (includePartChecked) {
+                totalPart += partShare;
+            }
+
+            const cells = [
+                practice.practiceName,
+                formatCurrency(coreShare),
+                formatCurrency(extShare),
+                formatCurrency(careShare),
+                formatCurrency(capShare),
+                formatCurrency(arrsShare),
+                formatCurrency(iifShare)
+            ];
+            if (includePartChecked) {
+                cells.push(formatCurrency(partShare));
+            }
+            practiceBreakdownTable.innerHTML += `
+                <tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>
+            `;
+        });
+
+    const totalCells = [
+        'Total',
+        formatCurrency(totalCore),
+        formatCurrency(totalExt),
+        formatCurrency(totalCare),
+        formatCurrency(totalCap),
+        formatCurrency(totalArrs),
+        formatCurrency(totalIif)
+    ];
+    if (includePartChecked) {
+        totalCells.push(formatCurrency(totalPart));
+    }
+
+    const totalRow = document.createElement('tr');
+    totalCells.forEach((cellContent, index) => {
+        const cell = document.createElement('td');
+        cell.textContent = cellContent;
+        if (index === 0 || index > 0) {
+            cell.style.fontWeight = 'bold';
+        }
+        totalRow.appendChild(cell);
+    });
+    practiceBreakdownTable.appendChild(totalRow);
+}
 
 function updateFundingChart(corePcn, extendedAccess, careHome, capacity, arrs, iif, participation) {
-    const data = {
-        labels: [],
-        datasets: [{
-            data: [],
-            backgroundColor: [
-                '#005eb8', '#330072', '#ae2573', '#41b6e6', '#78be20', '#00a499', '#ffb81c'
-            ]
-        }]
-    };
+    try {
+        const data = {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    '#005eb8', '#330072', '#ae2573', '#41b6e6', '#78be20', '#00a499', '#ffb81c'
+                ]
+            }]
+        };
 
-    if (corePcn > 0) {
-        data.labels.push('Core PCN');
-        data.datasets[0].data.push(corePcn);
-    }
-    if (extendedAccess > 0) {
-        data.labels.push('Extended Access');
-        data.datasets[0].data.push(extendedAccess);
-    }
-    if (careHome > 0) {
-        data.labels.push('Care Home');
-        data.datasets[0].data.push(careHome);
-    }
-    if (capacity > 0) {
-        data.labels.push('Capacity');
-        data.datasets[0].data.push(capacity);
-    }
-    if (arrs > 0) {
-        data.labels.push('ARRS');
-        data.datasets[0].data.push(arrs);
-    }
-    if (iif > 0) {
-        data.labels.push('IIF');
-        data.datasets[0].data.push(iif);
-    }
-    if (participation > 0) {
-        data.labels.push('Participation');
-        data.datasets[0].data.push(participation);
-    }
+        if (corePcn > 0) {
+            data.labels.push('Core PCN');
+            data.datasets[0].data.push(corePcn);
+        }
+        if (extendedAccess > 0) {
+            data.labels.push('Extended Access');
+            data.datasets[0].data.push(extendedAccess);
+        }
+        if (careHome > 0) {
+            data.labels.push('Care Home');
+            data.datasets[0].data.push(careHome);
+        }
+        if (capacity > 0) {
+            data.labels.push('Capacity');
+            data.datasets[0].data.push(capacity);
+        }
+        if (arrs > 0) {
+            data.labels.push('ARRS');
+            data.datasets[0].data.push(arrs);
+        }
+        if (iif > 0) {
+            data.labels.push('IIF');
+            data.datasets[0].data.push(iif);
+        }
+        if (participation > 0) {
+            data.labels.push('Participation');
+            data.datasets[0].data.push(participation);
+        }
 
-    if (pieChart) {
-        pieChart.destroy();
-    }
+        if (!fundingChart.getContext('2d')) {
+            throw new Error('Canvas context not available');
+        }
 
-    pieChart = new Chart(fundingChart, {
-        type: 'pie',
-        data: data,
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'right',
-                    labels: {
-                        font: {
-                            size: 14
+        if (pieChart) {
+            pieChart.destroy();
+        }
+
+        pieChart = new Chart(fundingChart, {
+            type: 'pie',
+            data: data,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 14
+                            }
                         }
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const value = context.raw;
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.chart.data.labels[context.dataIndex] || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                            }
+                        }
+                    },
+                    datalabels: {
+                        color: '#000',
+                        font: {
+                            size: 12,
+                            weight: 'bold'
+                        },
+                        formatter: (value, context) => {
+                            const label = context.chart.data.labels[context.dataIndex] || '';
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = Math.round((value / total) * 100);
-                            return `${context.label}: ${formatCurrency(value)} (${percentage}%)`;
-                        }
+                            if ((value / total) < 0.05) {
+                                return '';
+                            }
+                            return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                        },
+                        anchor: 'end',
+                        align: 'end',
+                        offset: 30,
+                        clamp: true,
+                        clip: false
                     }
                 }
-            }
-        }
-    });
+            },
+            plugins: [ChartDataLabels]
+        });
+    } catch (error) {
+        console.error('Error updating funding chart:', error);
+        alert('Failed to render funding chart. Please check the console for details.');
+    }
 }
 
 function fillExampleData() {
@@ -877,20 +885,14 @@ function fillExampleData() {
     includeCorePcn.checked = true;
     includeExtendedAccess.checked = true;
     includeCareHome.checked = true;
-    includeCapacity.checked = true;
-    useCaipLocal.checked = false;
+    includeCasp.checked = true;
+    includeCaip.checked = true;
+    caipDomain1.checked = true;
+    caipDomain2.checked = true;
     includeArrs.checked = true;
     includeIif.checked = true;
     includeParticipation.checked = false;
     calculateFunding();
-}
-
-function exportAsPdf() {
-    alert('PDF export functionality will be implemented in a future update.');
-}
-
-function exportAsCsv() {
-    alert('CSV export functionality will be implemented in a future update.');
 }
 
 function formatCurrency(value) {
@@ -899,6 +901,7 @@ function formatCurrency(value) {
         maximumFractionDigits: 2
     });
 }
+window.formatCurrency = formatCurrency;
 
 function formatNumber(value) {
     return value.toLocaleString('en-GB');
@@ -927,4 +930,3 @@ function openContactModal() {
 function closeContactModal() {
     contactModal.style.display = 'none';
 }
-

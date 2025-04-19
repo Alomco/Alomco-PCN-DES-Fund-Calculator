@@ -559,3 +559,9 @@ tr:nth-child(even) {
     overflow-y: auto;
 }
 
+@media print {
+    .footer .footer-links {
+        display: none !important;
+    }
+  }
+  

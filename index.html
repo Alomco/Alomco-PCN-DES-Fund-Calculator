@@ -1,460 +1,705 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PCN DES Fund Calculator 2025/26 - NHS</title>
+    …  
     <link rel="stylesheet" href="styles.css">
-</head>
+  
+    <!-- PRINT STYLES: clean up for PDF -->
+    <style media="print">
+        /* 1) Hide only the bits you don’t want */
+        #calculation-options,
+        .tabs,
+        .btn-container,
+        #pcn-modal {
+          display: none !important;
+        }
+      
+        /* 2) Show and pin your existing header & footer */
+        .header, .footer {
+          display: block !important;
+          position: fixed !important;
+          left: 0; right: 0;
+          background: white;
+          z-index: 999;
+          border: none; /* or your existing borders */
+          padding: 5px 10px; /* adjust to match your screen */
+          font-size: 9pt;
+          color: #444;
+        }
+        .header { top: 0; border-bottom: 1px solid #ccc; }
+        .footer { bottom: 0; border-top:    1px solid #ccc; text-align: right; }
+      
+        /* 3) Push page content below/above header/footer */
+        body {
+          margin-top:    60px !important; /* should equal .header height + padding */
+          margin-bottom: 40px !important; /* should equal .footer height + padding */
+        }
+      
+        /* 4) Condense your form sections */
+        #pcn-selection .form-col,
+        #population-data .form-col,
+        #additional-factors .form-col {
+          display: inline-block !important;
+          margin: 0 1em 0 0 !important;
+          border: none !important;
+          padding: 0 !important;
+        }
+        #pcn-selection label,
+        #population-data label,
+        #additional-factors label {
+          font-weight: bold;
+          margin-right: .25em;
+        }
+        #pcn-selection input,
+        #population-data input,
+        #additional-factors input,
+        #pcn-selection select {
+          border: none !important;
+          background: transparent !important;
+          width: auto !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          font-size: .9em;
+        }
+      
+        /* 5) Tighter tables */
+        #results-container table,
+        #practice-breakdown table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin-bottom: 6px !important;
+          font-size: 8pt !important;
+        }
+        th, td {
+          border: 1px solid #666 !important;
+          padding: 3px 4px !important;
+          text-align: left !important;
+        }
+      
+        /* 6) Show practice breakdown & chart */
+        #components-tab { display: none !important; }
+        #practices-tab,
+        #chart-tab {
+          display: block !important;
+          page-break-inside: avoid;
+          margin-bottom: 6px !important;
+        }
+        #chart-tab canvas {
+          max-width: 100% !important;
+          height: auto !important;
+        }
+      
+        /* 7) Additional info at the end */
+        #additional-info {
+          page-break-before: always !important;
+          font-size: 8pt !important;
+          margin-top: 10px !important;
+        }
+        .footer {
+    display: block !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: white !important;
+    padding: 5px 10px !important;
+    border-top: 1px solid #ccc !important;
+    font-size: 8pt !important;
+    text-align: right !important;
+    z-index: 9999 !important;
+  }
+
+  /* 2) Make room for it by increasing the bottom margin */
+  body {
+    margin-bottom: 50px !important; /* adjust if your footer is taller */
+  }
+
+
+      </style>
+      
+      
+      
+      
+  </head>
+  
+
 <body>
     <div class="container">
         <div class="header">
-            <h1>PCN DES Fund Calculator 2025/26</h1>
+            <h1営>PCN DES Fund Calculator 2025/26</h1>
             <div class="subtitle">
                 <p>Estimate your PCN's funding entitlements for the 2025/26 fiscal year</p>
             </div>
             <div class="powered-by">
                 <p>Powered by <a href="https://www.pcnd.info" target="_blank" style="color: white; text-decoration: underline;">www.pcnd.info</a></p>
             </div>
+            <p class="print-meta no-print-screen"><!-- filled in by JS --></p>
         </div>
 
-<!-- PCN Selection Section (single row, wider PCN Name) -->
-<div class="section">
-    <h2>PCN Selection</h2>
-    <div class="section-content">
-      <div class="form-row">
-        <div class="form-col form-col-small">
-          <label for="region">Region/Location:
-            <div class="tooltip">…</div>
-          </label>
-          <select id="region" class="input-orange">
-            <option value="">Select a region...</option>
-          </select>
-        </div>
-        <div class="form-col form-col-large">
-          <label for="pcn-display">PCN Name:
-            <div class="tooltip">…</div>
-          </label>
-          <div class="pcn-select-container">
-            <input type="text" id="pcn-display" class="input-orange" readonly placeholder="Click to select PCN...">
-            <input type="hidden" id="pcn-name-hidden">
+<!-- PCN Selection Section -->
+<div class="section" id="pcn-selection">
+  <h2>PCN Selection</h2>
+  <div class="section-content">
+    <div class="form-row">
+      <div class="form-col form-col-small">
+        <label for="region">Region/Location:
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">Select your NHS region to filter available PCNs. This helps narrow down the PCN selection to your specific geographic area.</span>
           </div>
+        </label>
+        <select id="region" class="input-orange">
+          <option value="">Select a region...</option>
+        </select>
+      </div>
+      <div class="form-col form-col-large">
+        <label for="pcn-display">PCN Name:
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The name of your Primary Care Network. Click to select from the available PCNs in your region.</span>
+          </div>
+        </label>
+        <div class="pcn-select-container">
+          <input type="text" id="pcn-display" class="input-orange" readonly placeholder="Click to select PCN...">
+          <input type="hidden" id="pcn-name-hidden">
         </div>
-        <div class="form-col form-col-small">
-          <label for="pcn-code">PCN Code:
-            <div class="tooltip">…</div>
-          </label>
-          <input type="text" id="pcn-code" class="input-orange" readonly>
-        </div>
+      </div>
+      <div class="form-col form-col-small">
+        <label for="pcn-code">PCN Code:
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The unique identifier code for your PCN. This will be automatically populated when you select a PCN.</span>
+          </div>
+        </label>
+        <input type="text" id="pcn-code" class="input-orange" readonly>
       </div>
     </div>
   </div>
+</div>
   
-    
+<!-- Population Data Section -->
+<div class="section" id="population-data">
+  <h2>Population Data</h2>
+  <div class="section-content">
+    <div class="form-row">
+      <!-- Raw List Size -->
+      <div class="form-col form-col-vertical" style="display:flex; flex-direction:column;">
+        <label for="raw-list-size">Raw List Size (1st Jan):
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The total number of patients registered with practices in your PCN, without any adjustments.</span>
+          </div>
+        </label>
+        <input type="number" id="raw-list-size" class="input-green" min="0" step="1">
+        <div style="flex-grow:1;"></div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-historical-factors" checked>
+          <label for="include-historical-factors">Include Past-Year factors in calculations</label>
+        </div>
+      </div>
 
-<!-- Population Data Section (updated layout) -->
-<div class="section">
-    <h2>Population Data</h2>
+      <!-- Adjusted List Size + Past-Year Adjustment -->
+      <div class="form-col form-col-vertical">
+        <label for="adjusted-list-size">Adjusted List Size:
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The raw list size adjusted by the historical adjustment factor. This is used for some funding calculations.</span>
+          </div>
+        </label>
+        <input type="number" id="adjusted-list-size" class="input-pink" readonly>
+        <label for="historical-adjustment-factor">Past-Year Adjustment (%):
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The percentage difference between raw and adjusted list sizes based on historical data. This factor is used to estimate the adjusted list size when only raw list size is available.</span>
+          </div>
+        </label>
+        <input type="number" id="historical-adjustment-factor" class="input-purple" min="-100" max="100" step="0.01">
+      </div>
+
+      <!-- Weighted List Size + Past-Year Weighting -->
+      <div class="form-col form-col-vertical">
+        <label for="weighted-list-size">Weighted List Size:
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The raw list size adjusted by the historical weighting factor. This is used for ARRS funding calculations.</span>
+          </div>
+        </label>
+        <input type="number" id="weighted-list-size" class="input-pink" readonly>
+        <label for="historical-weighting-factor">Past-Year Weighting (%):
+          <div class="tooltip">
+            <span>?</span>
+            <span class="tooltiptext">The percentage difference between raw and weighted list sizes based on historical data. This factor is used to estimate the weighted list size when only raw list size is available.</span>
+          </div>
+        </label>
+        <input type="number" id="historical-weighting-factor" class="input-purple" min="-100" max="100" step="0.01">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Additional Factors Section -->
+<div class="section" id="additional-factors">
+    <h2>Additional Factors</h2>
     <div class="section-content">
         <div class="form-row">
-            <!-- Raw List Size + include factors checkbox (aligned bottom) -->
-            <div class="form-col form-col-vertical" style="display:flex; flex-direction:column;">
-                <label for="raw-list-size">Raw List Size (1st Jan):
+            <div class="form-col">
+                <label for="care-home-beds">Care Home Beds:
                     <div class="tooltip">
                         <span>?</span>
-                        <span class="tooltiptext">The total number of patients registered with practices in your PCN, without any adjustments.</span>
+                        <span class="tooltiptext">The number of care home beds covered by your PCN. This is used to calculate the Care Home Premium.</span>
                     </div>
                 </label>
-                <input type="number" id="raw-list-size" class="input-green" min="0" step="1">
-                <div style="flex-grow:1;"></div>
-                <div class="checkbox-container">
-                    <input type="checkbox" id="include-historical-factors" checked>
-                    <label for="include-historical-factors">Include Past-Year factors in calculations</label>
-                </div>
+                <input type="number" id="care-home-beds" class="input-blue" min="0" step="1">
             </div>
-
-            <!-- Adjusted List Size + Past-Year Adjustment -->
-            <div class="form-col form-col-vertical">
-                <label for="adjusted-list-size">Adjusted List Size:
+            <div class="form-col">
+                <label for="iif-achieved-points">IIF Achieved Points:
                     <div class="tooltip">
                         <span>?</span>
-                        <span class="tooltiptext">The raw list size adjusted by the historical adjustment factor. This is used for some funding calculations.</span>
+                        <span class="tooltiptext">The number of Investment and Impact Fund (IIF) points your PCN has achieved. Maximum is 58 points.</span>
                     </div>
                 </label>
-                <input type="number" id="adjusted-list-size" class="input-pink" readonly>
-                <label for="historical-adjustment-factor" style="margin-top:15px; display:block;">Past-Year Adjustment (%):</label>
-                <input type="number" id="historical-adjustment-factor" class="input-purple" min="-100" max="100" step="0.01">
-            </div>
-
-            <!-- Weighted List Size + Past-Year Weighting -->
-            <div class="form-col form-col-vertical">
-                <label for="weighted-list-size">Weighted List Size:
-                    <div class="tooltip">
-                        <span>?</span>
-                        <span class="tooltiptext">The raw list size adjusted by the historical weighting factor. This is used for ARRS funding calculations.</span>
-                    </div>
-                </label>
-                <input type="number" id="weighted-list-size" class="input-pink" readonly>
-                <label for="historical-weighting-factor" style="margin-top:15px; display:block;">Past-Year Weighting (%):</label>
-                <input type="number" id="historical-weighting-factor" class="input-purple" min="-100" max="100" step="0.01">
+                <input type="number" id="iif-achieved-points" class="input-blue" min="0" max="666" step="1" placeholder="Max 58 Points">
             </div>
         </div>
     </div>
 </div>
 
-
-        <!-- Additional Factors Section -->
-        <div class="section">
-            <h2>Additional Factors</h2>
-            <div class="section-content">
-                <div class="form-row">
-                    <div class="form-col">
-                        <label for="care-home-beds">Care Home Beds:
-                            <div class="tooltip">
-                                <span>?</span>
-                                <span class="tooltiptext">The number of care home beds covered by your PCN. This is used to calculate the Care Home Premium.</span>
-                            </div>
-                        </label>
-                        <input type="number" id="care-home-beds" class="input-blue" min="0" step="1">
-                    </div>
-                    <div class="form-col">
-                        <label for="iif-achieved-points">IIF Achieved Points:
-                            <div class="tooltip">
-                                <span>?</span>
-                                <span class="tooltiptext">The number of Investment and Impact Fund (IIF) points your PCN has achieved. Maximum is 666 points.</span>
-                            </div>
-                        </label>
-                        <input type="number" id="iif-achieved-points" class="input-blue" min="0" max="666" step="1" placeholder="Max 58 Points">
-                    </div>
-                </div>
+<!-- Calculation Options Section -->
+<div class="section" id="calculation-options">
+  <h2>Calculation Options</h2>
+  <div class="section-content">
+    <div class="form-row">
+      <div class="form-col">
+        <h4>Include in Calculation:</h4>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-core-pcn" checked>
+          <label for="include-core-pcn">Core PCN Funding
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Core PCN funding is the baseline funding provided to all PCNs based on their patient population. It supports the basic operations of the PCN.</span>
             </div>
+          </label>
         </div>
--
-<!-- Calculation Options Section (offset Local CAIP) -->
-<div class="section">
-    <h2>Calculation Options</h2>
-    <div class="section-content">
-      <div class="form-row">
-        <div class="form-col">
-          <h4>Include in Calculation:</h4>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-core-pcn" checked>
-            <label for="include-core-pcn">Core PCN Funding</label>
-          </div>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-extended-access" checked>
-            <label for="include-extended-access">Enhanced Access Payment</label>
-          </div>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-care-home" checked>
-            <label for="include-care-home">Care Home Premium</label>
-          </div>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-arrs" checked>
-            <label for="include-arrs">ARRS Funding</label>
-          </div>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-iif" checked>
-            <label for="include-iif">IIF Achievement</label>
-          </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-extended-access" checked>
+          <label for="include-extended-access">Enhanced Access Payment
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Extended Access funding supports PCNs in providing additional appointments outside core hours, improving patient access to primary care services.</span>
+            </div>
+          </label>
         </div>
-        <div class="form-col">
-          <h4>&nbsp;</h4>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-capacity" checked>
-            <label for="include-capacity">Capacity and Access Support Payment</label>
-          </div>
-          <div class="checkbox-container" style="margin-left: 20px;">
-            <input type="checkbox" id="use-caip-local">
-            <label for="use-caip-local">Local CAIP</label>
-          </div>
-          <div class="checkbox-container">
-            <input type="checkbox" id="include-participation">
-            <label for="include-participation">Participation Fund (Practice Payment)</label>
-          </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-care-home" checked>
+          <label for="include-care-home">Care Home Premium
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Care Home Premium provides additional funding for PCNs based on the number of care home beds they support, recognizing the additional workload involved.</span>
+            </div>
+          </label>
+        </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-arrs" checked>
+          <label for="include-arrs">ARRS Funding
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Additional Roles Reimbursement Scheme (ARRS) funding supports PCNs in recruiting additional staff across a range of eligible roles.</span>
+            </div>
+          </label>
+        </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-iif" checked>
+          <label for="include-iif">IIF Achievement
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Investment and Impact Fund (IIF) provides financial incentives for PCNs to deliver objectives in specific areas such as prevention, inequalities, and access.</span>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="form-col">
+        <h4>&nbsp;</h4>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-casp" checked>
+          <label for="include-casp">Capacity and Access Support Payment
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Capacity and Access Support Payment (CASP) provides unconditional funding (£2.246 per adjusted patient) to improve access to primary care services.</span>
+            </div>
+          </label>
+        </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-caip">
+          <label for="include-caip">Capacity and Access Improvement Payment
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Capacity and Access Improvement Payment (CAIP) provides conditional funding (£0.962 per adjusted patient) based on ICB-assessed progress in two domains: patient experience/access and appointment data accuracy.</span>
+            </div>
+          </label>
+        </div>
+        <div class="checkbox-container" style="margin-left: 20px;">
+          <input type="checkbox" id="caip-domain1">
+          <label for="caip-domain1">CAIP: Patient Experience and Access
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Achieved by improving patient experience and access via the Modern General Practice Access model, assessed by the ICB (£0.481 per adjusted patient).</span>
+            </div>
+          </label>
+        </div>
+        <div class="checkbox-container" style="margin-left: 20px;">
+          <input type="checkbox" id="caip-domain2">
+          <label for="caip-domain2">CAIP: Appointment Data Accuracy
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Achieved by improving General Practice Appointment Data (GPAD) accuracy, assessed by the ICB (£0.481 per adjusted patient).</span>
+            </div>
+          </label>
+        </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="include-participation">
+          <label for="include-participation">Participation Fund (Practice Payment)
+            <div class="tooltip">
+              <span>?</span>
+              <span class="tooltiptext">Participation Fund provides payments directly to practices for their participation in the PCN DES, rather than to the PCN itself.</span>
+            </div>
+          </label>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-        <!-- Calculate Button -->
+
+<!-- Calculate Button -->
+<div class="btn-container">
+    <button id="calculate-btn" class="btn btn-primary">Calculate Funding</button>
+    <button id="fill-example" class="btn btn-secondary">Fill with Example Data</button>
+</div>
+
+<!-- Loading Spinner -->
+<div id="loading-spinner" class="spinner"></div>
+
+<!-- Results Section -->
+<div id="results-container" class="results-container">
+    <div class="section">
+      <h2>Funding Results</h2>
+      <div class="section-content">
+  
+        <!-- Summary -->
+        <div class="results-summary">
+          <div class="results-total">
+            Total Annual Funding: <span id="total-funding">£0.00</span>
+          </div>
+          <p>Quarterly Payment: <span id="quarterly-funding">£0.00</span></p>
+          <p>Monthly Payment: <span id="monthly-funding">£0.00</span></p>
+        </div>
+  
+        <!-- Tabs -->
+        <div class="tabs">
+          <div class="tab active" data-tab="components-tab">
+            Funding Components
+          </div>
+          <div class="tab" data-tab="practices-tab">
+            Practice Breakdown
+          </div>
+          <div class="tab" data-tab="chart-tab">
+            Chart View
+          </div>
+        </div>
+  
+        <!-- Tab Panes -->
+        <div id="components-tab" class="tab-content active">
+          <table id="funding-components">
+            <thead>
+              <tr>
+                <th>Funding Component</th>
+                <th>Amount</th>
+                <th>Calculation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- rows injected by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+  
+        <div id="practices-tab" class="tab-content">
+          <table id="practice-breakdown">
+            <thead>
+              <tr>
+                <th>Practice Name</th>
+                <th>Core PCN Funding</th>
+                <th>Enhanced Access Payment</th>
+                <th>Care Home Premium</th>
+                <th>Capacity and Access Support Payment</th>
+                <th>ARRS Funding</th>
+                <th>IIF Achievement</th>
+                <th>Participation Fund (Practice Payment)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- rows injected by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+  
+        <div id="chart-tab" class="tab-content">
+          <div class="chart-container">
+            <canvas id="funding-chart"></canvas>
+          </div>
+        </div>
+  
+        <!-- Export buttons -->
         <div class="btn-container">
-            <button id="calculate-btn" class="btn btn-primary">Calculate Funding</button>
-            <button id="fill-example" class="btn btn-secondary">Fill with Example Data</button>
+          <button id="export-pdf" class="btn btn-secondary no-print">Export PDF Report</button>
+          <button id="export-csv" class="btn btn-secondary">Export as CSV</button>
         </div>
-
-        <!-- Loading Spinner -->
-        <div id="loading-spinner" class="spinner"></div>
-
-        <!-- Results Section -->
-        <div id="results-container" class="results-container">
-            <div class="section">
-                <h2>Funding Results</h2>
-                <div class="section-content">
-                    <div class="results-summary">
-                        <div class="results-total">Total Annual Funding: <span id="total-funding">£0.00</span></div>
-                        <p>Quarterly Payment: <span id="quarterly-funding">£0.00</span></p>
-                        <p>Monthly Payment: <span id="monthly-funding">£0.00</span></p>
-                    </div>
-
-                    <div class="tabs">
-                        <div class="tab active" data-tab="components-tab">Funding Components</div>
-                        <div class="tab" data-tab="practices-tab">Practice Breakdown</div>
-                        <div class="tab" data-tab="chart-tab">Chart View</div>
-                    </div>
-
-                    <div id="components-tab" class="tab-content active">
-                        <table id="funding-components">
-                            <thead>
-                                <tr>
-                                    <th>Funding Component</th>
-                                    <th>Amount</th>
-                                    <th>Calculation</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Funding components will be added here -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div id="quarterly-tab" class="tab-content">
-                        <table id="quarterly-breakdown">
-                            <thead>
-                                <tr>
-                                    <th>Quarter</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Quarterly breakdown will be added here -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div id="monthly-tab" class="tab-content">
-                        <table id="monthly-breakdown">
-                            <thead>
-                                <tr>
-                                    <th>Month</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Monthly breakdown will be added here -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div id="practices-tab" class="tab-content">
-                        <table id="practice-breakdown">
-                          <thead>
-                            <tr>
-                              <th>Practice Name</th>
-                              <th>Core PCN Funding</th>
-                              <th>Enhanced Access Payment</th>
-                              <th>Care Home Premium</th>
-                              <th>Capacity and Access Support Payment</th>
-                              <th>ARRS Funding</th>
-                              <th>IIF Achievement</th>
-                              <th>Participation Fund (Practice Payment)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <!-- Practice breakdown will be added here -->
-                          </tbody>
-                        </table>
-                      </div>
-
-                    <div class="btn-container">
-                        <button id="export-pdf" class="btn btn-secondary">Export as PDF</button>
-                        <button id="export-csv" class="btn btn-secondary">Export as CSV</button>
-                    </div>
-                </div>
-            </div>
+  
+      </div>
+    </div>
+  </div>
+  
+<!-- PCN Selection Modal -->
+<div id="pcn-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Select PCN</h3>
+            <span class="close-btn">×</span>
         </div>
-
-        <!-- PCN Selection Modal -->
-        <div id="pcn-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Select PCN</h3>
-                    <span class="close">&times;</span>
-                </div>
-                <input type="text" id="pcn-modal-search" class="modal-search" placeholder="Search PCNs...">
-                <div class="pcn-list" id="pcn-list">
-                    <!-- PCN list will be populated here -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Additional Information and Resources Section -->
-        <div class="section">
-            <h2>Additional Information and Resources</h2>
-            <div class="section-content">
-                <h3>About DES Funding</h3>
-                <p>The Network Contract Directed Enhanced Service (DES) provides funding to Primary Care Networks (PCNs) to support the delivery of services to patients. This funding is designed to help PCNs develop and maintain integrated services, improve access, and enhance care quality.</p>
-                
-                <h3>Understanding List Sizes</h3>
-                <p><strong>Raw List Size:</strong> The actual number of patients registered with practices in a PCN without any modifications.</p>
-                
-                <p><strong>Adjusted List Size:</strong> The modified raw count accounting for practical factors such as PCN membership changes. This value is used for calculating most funding elements.</p>
-                
-                <p><strong>Weighted List Size:</strong> A transformation of the raw count to reflect the varying healthcare needs of different demographic groups, primarily used for ARRS funding allocation.</p>
-                
-                <p><strong>Historical Adjustment Factor:</strong> The percentage difference between raw and adjusted list sizes based on historical data. This factor is used to estimate the adjusted list size when only raw list size is available. For example, if a PCN's adjusted list size is typically 5% higher than its raw list size, the historical adjustment factor would be 5%.</p>
-                
-                <p><strong>Historical Weighting Factor:</strong> The percentage difference between raw and weighted list sizes based on historical data. This factor is used to estimate the weighted list size when only raw list size is available. For example, if a PCN's weighted list size is typically 10% higher than its raw list size, the historical weighting factor would be 10%.</p>
-                
-                <h3>Funding Components</h3>
-                <p><strong>Core PCN Funding:</strong> £2.999 per patient, calculated as (£2.266 × raw list size + £0.733 × adjusted population).</p>
-                
-                <p><strong>Extended Access:</strong> Calculated as £8.427 × adjusted population.</p>
-                
-                <p><strong>Care Home Premium:</strong> £130.253 per bed per year.</p>
-                
-                <p><strong>PCN Capacity and Access Support (CAIP):</strong> Calculated as £3.208 × adjusted population. When the "Use CAIP Local Rate" option is selected, this rate is increased by 15% to £3.689 per patient to reflect the higher funding available through local commissioning arrangements.</p>
-                
-                <p><strong>ARRS Funding:</strong> ARRS Funding: Calculated as £26.631 per weighted patient, based on the PCN’s weighted population. The formula used is: £26.631 × PCN weighted population. For example, a PCN with a weighted population of 50,000 would receive: 50,000 × £26.631 = £1,331,550..</p>
-                
-                <p><strong>IIF Funding:</strong> Investment and Impact Fund, a performance-based incentive scheme. Calculated as £198 per point achieved, with a maximum of 58 points available. The total potential IIF funding is £11,484 (58 points × £198).</p>
-                
-                <p><strong>Participation Fund:</strong> Funding that goes directly to practices for participation in the PCN DES. Calculated as £1.761 × weighted population. This funding is paid directly to practices rather than to the PCN.</p>
-                
-                <h3>Calculation Methods</h3>
-                <p>This calculator uses the official formulas from the NHS England Network Contract DES Specification 2025/26. When adjusted or weighted list sizes are missing, they are estimated based on:</p>
-                <ul>
-                    <li>PCN-specific historical data from 2024/25 (where available).</li>
-                    <li>National average adjustment factors (as a fallback).</li>
-                    <li>User-provided custom adjustment factors.</li>
-                </ul>
-                
-                <h3>Official Resources</h3>
-                <ul>
-                    <li><a href="https://www.england.nhs.uk/publication/network-contract-directed-enhanced-service-specification-2025-26" target="_blank">NHS England Network Contract DES Specification 2025/26</a></li>
-                    <li><a href="https://www.england.nhs.uk/publication/network-contract-guidance-2025-26" target="_blank">Network Contract Guidance Part B</a></li>
-                    <li><a href="https://www.bma.org.uk/advice-and-support/gp-practices/pcns/pcn-funding" target="_blank">BMA PCN Funding Guidance</a></li>
-                    <li><a href="https://www.england.nhs.uk/publication/pcn-adjusted-populations-2024-25" target="_blank">PCN Adjusted Populations Spreadsheet 2024-25</a></li>
-                    <li><a href="https://www.england.nhs.uk/primary-care/primary-care-networks/network-contract-des/des-guidance-2025-26/" target="_blank">NHS Allocations Resources</a></li>
-                    <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/april-2025" target="_blank">Patients Registered at a GP Practice, April 2025</a></li>
-                </ul>
-                
-                <h3>Frequently Asked Questions</h3>
-                <p><strong>How accurate is this calculator?</strong><br>
-                This calculator employs the official funding rates and formulas from the NHS England Network Contract DES Specification 2025/26. Its accuracy depends on the quality of the input data. For best results, use the official list sizes provided by NHS England.</p>
-                
-                <p><strong>Why are my adjusted and weighted list sizes different from the raw list size?</strong><br>
-                Adjusted list sizes reflect modifications due to PCN membership changes and other practical factors, while weighted list sizes account for differing healthcare needs. Both metrics are calculated using complex formulas by NHS England and typically result in higher values than the raw list sizes.</p>
-                
-                <p><strong>How is ARRS funding calculated?</strong><br>
-                ARRS funding is distributed based on a PCN's weighted population share from a total of £1.7bn for 2025/26. Although final allocations are determined by NHS England, this calculator provides an estimate based on the weighted list size.</p>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            <div class="footer-links">
-                <a href="#" onclick="openTermsModal()">Terms of Service</a> | 
-                <a href="#" onclick="openPrivacyModal()">Privacy Policy</a> | 
-                <a href="#" onclick="openContactModal()">Contact Us</a>
-            </div>
-            <p>Powered by <a href="https://www.pcnd.info" target="_blank">www.pcnd.info</a> | © 2025 Alomco Ltd. All Rights Reserved.</p>
-            <p>Updated April 2025</p>
+        <input type="text" id="pcn-modal-search" class="modal-search" placeholder="Search PCNs...">
+        <div class="pcn-list" id="pcn-list">
+            <!-- PCN list will be populated here -->
         </div>
     </div>
+</div>
 
-    <!-- Terms of Use Modal -->
-    <div id="terms-modal" class="terms-modal">
-        <div class="terms-content">
-            <div class="modal-header">
-                <h3>Terms of Service</h3>
-                <span class="close" onclick="closeTermsModal()">&times;</span>
-            </div>
-            <div>
-                <h4>Acceptance of Terms</h4>
-                <p>By using the PCN DES Fund Calculator, you agree to these Terms of Service. If you do not agree, please do not use this calculator.</p>
-                
-                <h4>Use of Calculator</h4>
-                <p>The PCN DES Fund Calculator is provided for informational purposes only. It is designed to help Primary Care Networks estimate their potential funding under the Network Contract DES for the 2025/26 fiscal year.</p>
-                
-                <h4>No Guarantee of Accuracy</h4>
-                <p>While we strive to provide accurate calculations based on the latest available information, we cannot guarantee the accuracy of the results. The calculator provides estimates only, and actual funding may vary based on official NHS England calculations and any subsequent changes to funding rates or formulas.</p>
-                
-                <h4>No Professional Advice</h4>
-                <p>The information provided by this calculator does not constitute professional advice. Users should consult with appropriate professionals and refer to official NHS England documentation for definitive information about PCN funding.</p>
-                
-                <h4>Limitation of Liability</h4>
-                <p>We shall not be liable for any direct, indirect, incidental, consequential, or special damages arising out of or in any way connected with the use of this calculator or the information it provides.</p>
-                
-                <h4>Changes to Terms</h4>
-                <p>We reserve the right to modify these Terms of Use at any time. Your continued use of the calculator after any changes indicates your acceptance of the modified terms.</p>
-                
-                <h4>Governing Law</h4>
-                <p>These Terms of Use shall be governed by and construed in accordance with the laws of the United Kingdom.</p>
-            </div>
+<!-- Additional Information and Resources Section -->
+<div class="section" id="additional-info">
+    <h2>Additional Information and Resources</h2>
+    <div class="section-content">
+        <h3>About DES Funding</h3>
+        <p>The Network Contract Directed Enhanced Service (DES) provides funding to Primary Care Networks (PCNs) to support the delivery of services to patients. This funding is designed to help PCNs develop and maintain integrated services, improve access, and enhance care quality.</p>
+        
+        <h3>Understanding List Sizes</h3>
+        <p><strong>Raw List Size:</strong> The actual number of patients registered with practices in a PCN without any modifications.</p>
+        
+        <p><strong>Adjusted List Size:</strong> The modified raw count accounting for practical factors such as PCN membership changes. This value is used for calculating most funding elements.</p>
+        
+        <p><strong>Weighted List Size:</strong> A transformation of the raw count to reflect the varying healthcare needs of different demographic groups, primarily used for ARRS funding allocation.</p>
+        
+        <p><strong>Past-Year Adjustment (%):</strong> The percentage difference between raw and adjusted list sizes based on historical data. This factor is used to estimate the adjusted list size when only raw list size is available. For example, if a PCN's adjusted list size is typically 5% higher than its raw list size, the historical adjustment factor would be 5%.</p>
+        
+        <p><strong>Past-Year Weighting (%):</strong> The percentage difference between raw and weighted list sizes based on historical data. This factor is used to estimate the weighted list size when only raw list size is available. For example, if a PCN's weighted list size is typically 10% higher than its raw list size, the historical weighting factor would be 10%.</p>
+        
+        <h3>Funding Components</h3>
+        <p><strong>Core PCN Funding:</strong> £2.999 per patient, calculated as (£2.266 × raw list size + £0.733 × adjusted population).</p>
+        <p><strong>Enhanced Access:</strong> Calculated as £8.427 × adjusted population.</p>
+        <p><strong>Care Home Premium:</strong> £130.253 per bed per year.</p>
+        <p><strong>PCN Capacity and Access Payment (CAP):</strong> Calculated as £3.208 × adjusted population, comprising £2.246 × adjusted population (CASP, unconditional) and £0.962 × adjusted population (CAIP, conditional on ICB-assessed progress in two domains: patient experience/access and appointment data accuracy, £0.481 per domain).</p>
+        <p><strong>ARRS Funding:</strong> Calculated as £26.631 × weighted population.</p>
+        <p><strong>IIF Funding:</strong> Calculated as £198 per point achieved, with a maximum of 58 points.</p>
+        <p><strong>Participation Fund:</strong> Calculated as £1.761 × weighted population, paid directly to practices.</p>        
+       
+        <h3>Calculation Methods</h3>
+        <p>This calculator uses the official formulas from the NHS England Network Contract DES Specification 2025/26. When adjusted or weighted list sizes are missing, they are estimated based on:</p>
+        <ul>
+            <li>PCN-specific historical data from 2024/25 (where available).</li>
+            <li>National average adjustment factors (as a fallback).</li>
+            <li>User-provided custom adjustment factors.</li>
+        </ul>
+        
+        <h3>Official Resources</h3>
+        <ul>
+            <li><a href="https://www.england.nhs.uk/publication/network-contract-des-contract-specification-2025-26-pcn-requirements-and-entitlements/" target="_blank">NHS England Network Contract DES Specification 2025/26</a></li>
+            <li><a href="https://www.england.nhs.uk/publication/network-contract-guidance-2025-26" target="_blank">Network Contract Guidance Part B</a></li>
+            <li><a href="https://www.bma.org.uk/advice-and-support/gp-practices/pcns/pcn-funding" target="_blank">BMA PCN Funding Guidance</a></li>
+            <li><a href="https://www.england.nhs.uk/publication/pcn-adjusted-populations-2024-25" target="_blank">PCN Adjusted Populations Spreadsheet 2024-25</a></li>
+            <li><a href="https://www.england.nhs.uk/primary-care/primary-care-networks/network-contract-des/des-guidance-2025-26/" target="_blank">NHS Allocations Resources</a></li>
+            <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/april-2025" target="_blank">Patients Registered at a GP Practice, April 2025</a></li>
+        </ul>
+        
+        <h3>Frequently Asked Questions</h3>
+        <p><strong>How accurate is this calculator?</strong><br>
+        This calculator employs the official funding rates and formulas from the NHS England Network Contract DES Specification 2025/26. Its accuracy depends on the quality of the input data. For best results, use the official list sizes provided by NHS England.</p>
+        
+        <p><strong>Why are my adjusted and weighted list sizes different from the raw list size?</strong><br>
+        Adjusted list sizes reflect modifications due to PCN membership changes and other practical factors, while weighted list sizes account for differing healthcare needs. Both metrics are calculated using complex formulas by NHS England and typically result in higher values than the raw list sizes.</p>
+        
+        <p><strong>How is ARRS funding calculated?</strong><br>
+        ARRS funding is distributed based on a PCN's weighted population share from a total of £1.7bn for 2025/26. Although final allocations are determined by NHS England, this calculator provides an estimate based on the weighted list size.</p>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+    <div class="footer-links">
+        <a href="#" onclick="openTermsModal()">Terms of Service</a> | 
+        <a href="#" onclick="openPrivacyModal()">Privacy Policy</a> | 
+        <a href="#" onclick="openContactModal()">Contact Us</a>
+    </div>
+    <p>Powered by <a href="https://www.pcnd.info" target="_blank">www.pcnd.info</a> | © 2025 Alomco Ltd. All Rights Reserved.</p>
+    <p>Updated April 2025</p>
+</div>
+</div>
+
+<!-- Terms of Use Modal -->
+<div id="terms-modal" class="terms-modal">
+    <div class="terms-content">
+        <div class="modal-header">
+            <h3>Terms of Service</h3>
+            <span class="close" onclick="closeTermsModal()">&times;</span>
+        </div>
+        <div>
+            <h4>Acceptance of Terms</h4>
+            <p>By using the PCN DES Fund Calculator, you agree to these Terms of Service. If you do not agree, please do not use this calculator.</p>
+            
+            <h4>Use of Calculator</h4>
+            <p>The PCN DES Fund Calculator is provided for informational purposes only. It is designed to help Primary Care Networks estimate their potential funding under the Network Contract DES for the 2025/26 fiscal year.</p>
+            
+            <h4>No Guarantee of Accuracy</h4>
+            <p>While we strive to provide accurate calculations based on the latest available information, we cannot guarantee the accuracy of the results. The calculator provides estimates only, and actual funding may vary based on official NHS England calculations and any subsequent changes to funding rates or formulas.</p>
+            
+            <h4>No Professional Advice</h4>
+            <p>The information provided by this calculator does not constitute professional advice. Users should consult with appropriate professionals and refer to official NHS England documentation for definitive information about PCN funding.</p>
+            
+            <h4>Limitation of Liability</h4>
+            <p>We shall not be liable for any direct, indirect, incidental, consequential, or special damages arising out of or in any way connected with the use of this calculator or the information it provides.</p>
+            
+            <h4>Changes to Terms</h4>
+            <p>We reserve the right to modify these Terms of Use at any time. Your continued use of the calculator after any changes indicates your acceptance of the modified terms.</p>
+            
+            <h4>Governing Law</h4>
+            <p>These Terms of Use shall be governed by and construed in accordance with the laws of the United Kingdom.</p>
         </div>
     </div>
+</div>
 
-    <!-- Privacy Policy Modal -->
-    <div id="privacy-modal" class="privacy-modal">
-        <div class="privacy-content">
-            <div class="modal-header">
-                <h3>Privacy Policy</h3>
-                <span class="close" onclick="closePrivacyModal()">&times;</span>
-            </div>
-            <div>
-                <h4>Data Collection</h4>
-                <p>The PCN DES Fund Calculator does not collect or store any personal data. All calculations are performed locally in your browser, and no data is transmitted to our servers.</p>
-                
-                <h4>PCN Data</h4>
-                <p>The calculator includes a database of PCNs and their associated information, which is used solely for the purpose of facilitating the selection of PCNs within the calculator. This data is publicly available information and does not include any personal data.</p>
-                
-                <h4>Cookies</h4>
-                <p>The calculator does not use cookies or similar tracking technologies.</p>
-                
-                <h4>Third-Party Services</h4>
-                <p>The calculator may use third-party services for hosting and content delivery. These services may collect standard internet log information and visitor behavior information to provide their services. This information is not used by us to identify visitors to the calculator.</p>
-                
-                <h4>Changes to Privacy Policy</h4>
-                <p>We reserve the right to modify this Privacy Policy at any time. Any changes will be effective immediately upon posting the updated policy.</p>
-                
-                <h4>Contact</h4>
-                <p>If you have any questions about this Privacy Policy, please contact us using the information provided in the Contact Us section.</p>
-            </div>
+<!-- Privacy Policy Modal -->
+<div id="privacy-modal" class="privacy-modal">
+    <div class="privacy-content">
+        <div class="modal-header">
+            <h3>Privacy Policy</h3>
+            <span class="close" onclick="closePrivacyModal()">&times;</span>
+        </div>
+        <div>
+            <h4>Data Collection</h4>
+            <p>The PCN DES Fund Calculator does not collect or store any personal data. All calculations are performed locally in your browser, and no data is transmitted to our servers.</p>
+            
+            <h4>PCN Data</h4>
+            <p>The calculator includes a database of PCNs and their associated information, which is used solely for the purpose of facilitating the selection of PCNs within the calculator. This data is publicly available information and does not include any personal data.</p>
+            
+            <h4>Cookies</h4>
+            <p>The calculator does not use cookies or similar tracking technologies.</p>
+            
+            <h4>Third-Party Services</h4>
+            <p>The calculator may use third-party services for hosting and content delivery. These services may collect standard internet log information and visitor behavior information to provide their services. This information is not used by us to identify visitors to the calculator.</p>
+            
+            <h4>Changes to Privacy Policy</h4>
+            <p>We reserve the right to modify this Privacy Policy at any time. Any changes will be effective immediately upon posting the updated policy.</p>
+            
+            <h4>Contact</h4>
+            <p>If you have any questions about this Privacy Policy, please contact us using the information provided in the Contact Us section.</p>
         </div>
     </div>
+</div>
 
-    <!-- Contact Modal -->
-    <div id="contact-modal" class="contact-modal">
-        <div class="contact-content">
-            <div class="modal-header">
-                <h3>Contact Us</h3>
-                <span class="close" onclick="closeContactModal()">&times;</span>
-            </div>
-            <div>
-                <h4>Get in Touch</h4>
-                <p>We welcome your feedback, questions, and suggestions about the PCN DES Fund Calculator. Please feel free to contact us using the information below:</p>
-                
-                <h4>Email</h4>
-                <p><a href="mailto:contact@ipcn.info">contact@ipcn.info</a></p>
-                
-                <h4>Website</h4>
-                <p><a href="https://www.pcnd.info" target="_blank">www.pcnd.info</a></p>
-                
-                <h4>About Alomco Ltd</h4>
-                <p>Alomco Ltd specializes in developing innovative tools and solutions for primary care networks and healthcare organizations. Our mission is to support the transformation of primary care through technology and data-driven insights.</p>
-                
-                <h4>Support Hours</h4>
-                <p>Our support team is available Monday through Friday, 9:00 AM to 5:00 PM GMT.</p>
-                
-                <h4>Feedback</h4>
-                <p>We are constantly working to improve the PCN DES Fund Calculator. If you have suggestions for new features or improvements, please let us know. Your feedback is invaluable to us.</p>
-            </div>
+<!-- Contact Modal -->
+<div id="contact-modal" class="contact-modal">
+    <div class="contact-content">
+        <div class="modal-header">
+            <h3>Contact Us</h3>
+            <span class="close" onclick="closeContactModal()">&times;</span>
+        </div>
+        <div>
+            <h4>Get in Touch</h4>
+            <p>We welcome your feedback, questions, and suggestions about the PCN DES Fund Calculator. Please feel free to contact us using the information below:</p>
+            
+            <h4>Email</h4>
+            <p><a href="/cdn-cgi/l/email-protection#55"><span class="__cf_email__" data-cfemail="295">[email&#160;protected]</span></a></p>
+            
+            <h4>Website</h4>
+            <p><a href="https://www.pcnd.info" target="_blank">www.pcnd.info</a></p>
+            
+            <h4>About Alomco Ltd</h4>
+            <p>Alomco Ltd specializes in developing innovative tools and solutions for primary care networks and healthcare organizations. Our mission is to support the transformation of primary care through technology and data-driven insights.</p>
+            
+            <h4>Support Hours</h4>
+            <p>Our support team is available Monday through Friday, 9:00 AM to 5:00 PM GMT.</p>
+            
+            <h4>Feedback</h4>
+            <p>We are constantly working to improve the PCN DES Fund Calculator. If you have suggestions for new features or improvements, please let us know. Your feedback is invaluable to us.</p>
         </div>
     </div>
+</div>
 
-    <!-- Include Chart.js for pie chart -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="scripts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.min.js"></script>
+<!-- Initialize jsPDF globally before loading other scripts -->
+<script>
+  // Make sure jsPDF is globally available
+  if (typeof jspdf !== 'undefined') {
+    window.jspdf = {
+      jsPDF: jspdf.jsPDF
+    };
+    // Make sure autoTable is available
+    if (typeof jspdf.jsPDF.prototype.autoTable === 'function') {
+      window.jspdf.jsPDF.prototype.autoTable = jspdf.jsPDF.prototype.autoTable;
+    }
+    console.log('jsPDF initialized globally before loading other scripts');
+  } else {
+    console.error('jsPDF library not found in global scope');
+  }
+</script>
+<script src="export.js"></script>
+<script src="scripts.js"></script>
+
+<!-- PDF export helper - removed to avoid conflicts with direct global jspdf usage -->
+<script>
+  // This script intentionally left empty to avoid conflicts
+  // The export.js file now uses the global jspdf variable directly
+</script>
+
 </body>
 </html>
