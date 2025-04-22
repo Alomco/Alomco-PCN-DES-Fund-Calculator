@@ -51,7 +51,7 @@ async function exportAsPdf({
             doc.setFontSize(8);
             doc.setTextColor(255, 255, 255);
             doc.text(
-                `Powered by www.pcnd.info | Generated on ${new Date().toLocaleDateString('en-GB')}`,
+                `Powered by www.pcnd.info | Alomco Ltd | Generated on ${new Date().toLocaleDateString('en-GB')}`,
                 margin,
                 pageHeight - 3
             );
@@ -105,7 +105,7 @@ async function exportAsPdf({
         doc.text('Powered by www.pcnd.info', pageWidth / 2, pageHeight - 25, { align: 'center' });
         doc.setFontSize(8);
         doc.setTextColor(greyColor);
-        doc.text('© 2025 All Rights Reserved.', pageWidth / 2, pageHeight - 15, { align: 'center' });
+        doc.text('©Alomco Ltd | 2025 All Rights Reserved.', pageWidth / 2, pageHeight - 15, { align: 'center' });
   
         // Page 2: Population Table, Funding Totals
         doc.addPage();
@@ -124,7 +124,6 @@ async function exportAsPdf({
                 item.name,
                 item.raw.toLocaleString(),
                 item.adjusted.toLocaleString(),
-                item.weighted.toLocaleString()
               ])
             : [[
                 'PCN Total',
@@ -135,7 +134,7 @@ async function exportAsPdf({
         console.log('listSizesData for Population Table:', listSizesData);
         doc.autoTable({
             startY: yPosition,
-            head: [['Name', 'Raw List Size', 'Adjusted List Size', 'Weighted List Size']],
+            head: [['Name', 'Raw List Size', 'Adjusted/Weighted Population']],
             body: listSizesData,
             theme: 'striped',
             headStyles: {
@@ -339,27 +338,21 @@ async function exportAsPdf({
         csvContent += `Fiscal Year,${escapeCsv('2025/26')}\n`;
         csvContent += `Generated,${escapeCsv(new Date().toLocaleDateString('en-GB'))}\n`;
         csvContent += `Powered by,${escapeCsv('www.pcnd.info')}\n`;
-        csvContent += `Copyright,${escapeCsv('© 2025 All Rights Reserved.')}\n\n`;
+        csvContent += `Copyright,${escapeCsv('©Alomco Ltd 2025 All Rights Reserved.')}\n\n`;
   
         // Population Data
-        csvContent += 'PCN and Practice Population Data\n';
-        csvContent += 'Name,Raw List Size,Adjusted List Size,Weighted List Size\n';
-        const listSizesData = practiceListSizes && practiceListSizes.length > 0
-            ? practiceListSizes.map(item => [
-                item.name,
-                item.raw.toLocaleString(),
-                item.adjusted.toLocaleString(),
-                item.weighted.toLocaleString()
-              ])
-            : [[
-                'PCN Total',
-                (parseFloat(rawListSizeInput.value) || 0).toLocaleString(),
-                (parseFloat(adjustedListSizeInput.value) || 0).toLocaleString(),
-                (parseFloat(weightedListSizeInput.value) || 0).toLocaleString()
-              ]];
-        listSizesData.forEach(row => {
-            csvContent += row.map(escapeCsv).join(',') + '\n';
-        });
+// Population Data
+csvContent += 'PCN and Practice Population Data\n';
+csvContent += 'Name,Raw List Size,Adjusted/Weighted Population\n';
+const listSizesData = practiceListSizes.map(item => [
+    item.name,
+    item.raw.toLocaleString(),
+    item.adjusted.toLocaleString()
+]);
+listSizesData.forEach(row => {
+    csvContent += row.map(escapeCsv).join(',') + '\n';
+});
+
         csvContent += `Note,${escapeCsv('Data as of 1st January 2025')}\n`;
         if (listSizesData.length === 1) {
             csvContent += `Additional Note,${escapeCsv('No practice-level data available; showing PCN Total only.')}\n`;
@@ -417,7 +410,7 @@ async function exportAsPdf({
   
         // Footer
         csvContent += 'Footer\n';
-        csvContent += `Note,${escapeCsv('Powered by www.pcnd.info | Generated on ' + new Date().toLocaleDateString('en-GB'))}\n`;
+        csvContent += `Note,${escapeCsv('Powered by www.pcnd.info | Alomco Ltd | Generated on ' + new Date().toLocaleDateString('en-GB'))}\n`;
   
         // Generate and download the CSV
         const encodedUri = encodeURI(csvContent);

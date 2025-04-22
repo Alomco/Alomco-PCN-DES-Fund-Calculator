@@ -350,19 +350,34 @@ function setupEventListeners() {
             return;
         }
         if (typeof window.exportAsCsv === 'function') {
+            // build the same listSizes array you send to PDF
+            const pcnSelected = pcnData.find(p => p.pcnCode === pcnCodeInput.value) || { practices: [] };
+            const practiceListSizes = [
+                {
+                  name: 'PCN Total',
+                  raw: parseFloat(rawInput.value)        || 0,
+                  adjusted: parseFloat(adjustedPopulationInput.value) || 0
+                },
+                ...pcnSelected.practices.map(practice => ({
+                  name:     practice.practiceName   || 'Unknown Practice',
+                  raw:      practice.raw             || 0,
+                  adjusted: practice.adjustedPopulation || 0
+                }))
+            ];
             window.exportAsCsv({
                 totalFundingSpan,
                 monthlyFundingSpan,
                 quarterlyFundingSpan,
                 fundingComponentsTable,
                 practiceBreakdownTable,
-                pcnNameHidden
+                pcnNameHidden,
+                practiceListSizes    // ← now defined
             });
         } else {
             console.error('exportAsCsv is not available on window');
             alert('CSV export functionality is not available. Please ensure export.js is loaded.');
         }
-    });
+      });
 
 
     tabs.forEach(tab => {
