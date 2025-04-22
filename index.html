@@ -153,27 +153,23 @@
   body {
     margin-bottom: 50px !important; /* adjust if your footer is taller */
   }
-
-
-      </style>
-      
-      
+  </style>
       
       
   </head>
-  
-
-<body>
+  <body>
     <div class="container">
         <div class="header">
-            <h1営>PCN DES Fund Calculator 2025/26</h1>
-            <div class="subtitle">
-                <p>Estimate your PCN's funding entitlements for the 2025/26 fiscal year</p>
+          <h1 style="font-size:2.25em;font-weight:bold; margin: 0;">
+            PCN DES Fund Calculator 2025/26
+          </h1>
+          <div class="subtitle" style="margin:0;">
+                <p>Calculate your PCN's funding entitlements for the 2025/26 fiscal year</p>
             </div>
-            <div class="powered-by">
+            <div class="powered-by" style="margin:0;">
                 <p>Powered by <a href="https://www.pcnd.info" target="_blank" style="color: white; text-decoration: underline;">www.pcnd.info</a></p>
             </div>
-            <p class="print-meta no-print-screen"><!-- filled in by JS --></p>
+            <p class="print-meta no-print-screen" style="margin: 0;"><!-- filled in by JS --></p>
         </div>
 
 <!-- PCN Selection Section -->
@@ -190,6 +186,18 @@
         </label>
         <select id="region" class="input-orange">
           <option value="">Select a region...</option>
+        </select>
+      </div>
+      <div class="form-col form-col-small">
+        <label for="icb-name">ICB Name:
+          <div class="tooltip"><span>?</span><span class="tooltiptext">
+            (Optional) Filter PCNs by your Integrated Care Board.
+          </span></div>
+        </label>
+        <select id="icb-name" class="input-orange">
+          <option value="">All ICBs...</option>
+
+          <!-- populated dynamically -->
         </select>
       </div>
       <div class="form-col form-col-large">
@@ -222,59 +230,19 @@
   <h2>Population Data</h2>
   <div class="section-content">
     <div class="form-row">
-      <!-- Raw List Size -->
-      <div class="form-col form-col-vertical" style="display:flex; flex-direction:column;">
-        <label for="raw-list-size">Raw List Size (1st Jan):
-          <div class="tooltip">
-            <span>?</span>
-            <span class="tooltiptext">The total number of patients registered with practices in your PCN, without any adjustments.</span>
-          </div>
-        </label>
-        <input type="number" id="raw-list-size" class="input-green" min="0" step="1">
-        <div style="flex-grow:1;"></div>
-        <div class="checkbox-container">
-          <input type="checkbox" id="include-historical-factors" checked>
-          <label for="include-historical-factors">Include Past-Year factors in calculations</label>
-        </div>
-      </div>
 
-      <!-- Adjusted List Size + Past-Year Adjustment -->
-      <div class="form-col form-col-vertical">
-        <label for="adjusted-list-size">Adjusted List Size:
-          <div class="tooltip">
-            <span>?</span>
-            <span class="tooltiptext">The raw list size adjusted by the historical adjustment factor. This is used for some funding calculations.</span>
-          </div>
-        </label>
-        <input type="number" id="adjusted-list-size" class="input-pink" readonly>
-        <label for="historical-adjustment-factor">Past-Year Adjustment (%):
-          <div class="tooltip">
-            <span>?</span>
-            <span class="tooltiptext">The percentage difference between raw and adjusted list sizes based on historical data. This factor is used to estimate the adjusted list size when only raw list size is available.</span>
-          </div>
-        </label>
-        <input type="number" id="historical-adjustment-factor" class="input-purple" min="-100" max="100" step="0.01">
-      </div>
+<div class="form-col form-col-vertical">
+  <label for="raw-list-size">Raw List Size (1 Jan 2025):</label>
+  <input type="number" id="raw-list-size" class="input-green" min="0" step="1">
+</div>
 
-      <!-- Weighted List Size + Past-Year Weighting -->
-      <div class="form-col form-col-vertical">
-        <label for="weighted-list-size">Weighted List Size:
-          <div class="tooltip">
-            <span>?</span>
-            <span class="tooltiptext">The raw list size adjusted by the historical weighting factor. This is used for ARRS funding calculations.</span>
-          </div>
-        </label>
-        <input type="number" id="weighted-list-size" class="input-pink" readonly>
-        <label for="historical-weighting-factor">Past-Year Weighting (%):
-          <div class="tooltip">
-            <span>?</span>
-            <span class="tooltiptext">The percentage difference between raw and weighted list sizes based on historical data. This factor is used to estimate the weighted list size when only raw list size is available.</span>
-          </div>
-        </label>
-        <input type="number" id="historical-weighting-factor" class="input-purple" min="-100" max="100" step="0.01">
-      </div>
-    </div>
-  </div>
+<div class="form-col form-col-vertical">
+  <label for="adjusted-population">Adjusted/Weighted Population:</label>
+  <input type="number" id="adjusted-population" class="input-green" min="0" step="1">
+</div>
+
+</div>
+</div>
 </div>
 
 <!-- Additional Factors Section -->
@@ -413,7 +381,7 @@
 <!-- Calculate Button -->
 <div class="btn-container">
     <button id="calculate-btn" class="btn btn-primary">Calculate Funding</button>
-    <button id="fill-example" class="btn btn-secondary">Fill with Example Data</button>
+    <button id="reset-btn" class="btn btn-secondary">Reset</button>
 </div>
 
 <!-- Loading Spinner -->
@@ -523,38 +491,34 @@
         <h3>Understanding List Sizes</h3>
         <p><strong>Raw List Size:</strong> The actual number of patients registered with practices in a PCN without any modifications.</p>
         
-        <p><strong>Adjusted List Size:</strong> The modified raw count accounting for practical factors such as PCN membership changes. This value is used for calculating most funding elements.</p>
+        <p><strong>Adjusted List Size:</strong> The Raw List, adjusted for PCN membership changes and other practical factors.</p>
         
-        <p><strong>Weighted List Size:</strong> A transformation of the raw count to reflect the varying healthcare needs of different demographic groups, primarily used for ARRS funding allocation.</p>
-        
-        <p><strong>Past-Year Adjustment (%):</strong> The percentage difference between raw and adjusted list sizes based on historical data. This factor is used to estimate the adjusted list size when only raw list size is available. For example, if a PCN's adjusted list size is typically 5% higher than its raw list size, the historical adjustment factor would be 5%.</p>
-        
-        <p><strong>Past-Year Weighting (%):</strong> The percentage difference between raw and weighted list sizes based on historical data. This factor is used to estimate the weighted list size when only raw list size is available. For example, if a PCN's weighted list size is typically 10% higher than its raw list size, the historical weighting factor would be 10%.</p>
-        
+        <p><strong>Weighted List Size:</strong> The Raw List transformed by the Carr‑Hill formula (age, sex, morbidity, etc.) to reflect varying healthcare needs.</p>
+
         <h3>Funding Components</h3>
-        <p><strong>Core PCN Funding:</strong> £2.999 per patient, calculated as (£2.266 × raw list size + £0.733 × adjusted population).</p>
-        <p><strong>Enhanced Access:</strong> Calculated as £8.427 × adjusted population.</p>
+        <p><strong>Core PCN Funding:</strong> £2.999 per patient, calculated as (£2.266 × raw list size + £0.733 × adjusted/weighted population).</p>
+        <p><strong>Enhanced Access:</strong> Calculated as £8.427 × adjusted/weighted population.</p>
         <p><strong>Care Home Premium:</strong> £130.253 per bed per year.</p>
-        <p><strong>PCN Capacity and Access Payment (CAP):</strong> Calculated as £3.208 × adjusted population, comprising £2.246 × adjusted population (CASP, unconditional) and £0.962 × adjusted population (CAIP, conditional on ICB-assessed progress in two domains: patient experience/access and appointment data accuracy, £0.481 per domain).</p>
-        <p><strong>ARRS Funding:</strong> Calculated as £26.631 × weighted population.</p>
+        <p><strong>PCN Capacity and Access Payment (CAP):</strong> Calculated as £3.208 × adjusted population, comprising £2.246 × adjusted/weighted population (CASP, unconditional) and £0.962 × adjusted/adjusted/weighted population (CAIP, conditional on ICB-assessed progress in two domains: patient experience/access and appointment data accuracy, £0.481 per domain).</p>
+        <p><strong>ARRS Funding:</strong> Calculated as £26.631 × adjusted/weighted population.</p>
         <p><strong>IIF Funding:</strong> Calculated as £198 per point achieved, with a maximum of 58 points.</p>
-        <p><strong>Participation Fund:</strong> Calculated as £1.761 × weighted population, paid directly to practices.</p>        
+        <p><strong>Participation Fund:</strong> Calculated as £1.761 × adjusted/weighted population, paid directly to practices.</p>        
        
         <h3>Calculation Methods</h3>
-        <p>This calculator uses the official formulas from the NHS England Network Contract DES Specification 2025/26. When adjusted or weighted list sizes are missing, they are estimated based on:</p>
+        <p>This calculator uses the official formulas from the NHS England Network Contract DES Specification 2025/26.</p>
         <ul>
-            <li>PCN-specific historical data from 2024/25 (where available).</li>
-            <li>National average adjustment factors (as a fallback).</li>
-            <li>User-provided custom adjustment factors.</li>
+            <li>PCN-specific data from 2025/26.</li>
+            <li>Inlcluign raw and adjustment factors.</li>
+            <li>User-provided custom adjustment factors i.e. manual user input overide.</li>
         </ul>
         
         <h3>Official Resources</h3>
         <ul>
             <li><a href="https://www.england.nhs.uk/publication/network-contract-des-contract-specification-2025-26-pcn-requirements-and-entitlements/" target="_blank">NHS England Network Contract DES Specification 2025/26</a></li>
-            <li><a href="https://www.england.nhs.uk/publication/network-contract-guidance-2025-26" target="_blank">Network Contract Guidance Part B</a></li>
-            <li><a href="https://www.bma.org.uk/advice-and-support/gp-practices/pcns/pcn-funding" target="_blank">BMA PCN Funding Guidance</a></li>
-            <li><a href="https://www.england.nhs.uk/publication/pcn-adjusted-populations-2024-25" target="_blank">PCN Adjusted Populations Spreadsheet 2024-25</a></li>
-            <li><a href="https://www.england.nhs.uk/primary-care/primary-care-networks/network-contract-des/des-guidance-2025-26/" target="_blank">NHS Allocations Resources</a></li>
+            <li><a href="https://www.england.nhs.uk/publication/network-contract-des-2024-25-part-b-guidance-non-clinical/" target="_blank">Network Contract Guidance Part B</a></li>
+            <li><a href="https://www.bma.org.uk/advice-and-support/gp-practices/primary-care-networks/primary-care-network-funding#:~:text=Since%20October%202022%2C%20PCNs%20have,k%20a%20month%20through%20this%20payment." target="_blank">BMA PCN Funding Guidance</a></li>
+            <li><a href="https://www.england.nhs.uk/wp-content/uploads/2025/03/PCN-adjusted-populations-spreadsheet-2025-26.xlsx" target="_blank">PCN Adjusted Populations Spreadsheet 2025-26</a></li>
+            <li><a href="https://www.england.nhs.uk/publication/allocation-of-resources-2025-26/" target="_blank">NHS Allocations Resources</a></li>
             <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/april-2025" target="_blank">Patients Registered at a GP Practice, April 2025</a></li>
         </ul>
         
@@ -562,11 +526,11 @@
         <p><strong>How accurate is this calculator?</strong><br>
         This calculator employs the official funding rates and formulas from the NHS England Network Contract DES Specification 2025/26. Its accuracy depends on the quality of the input data. For best results, use the official list sizes provided by NHS England.</p>
         
-        <p><strong>Why are my adjusted and weighted list sizes different from the raw list size?</strong><br>
-        Adjusted list sizes reflect modifications due to PCN membership changes and other practical factors, while weighted list sizes account for differing healthcare needs. Both metrics are calculated using complex formulas by NHS England and typically result in higher values than the raw list sizes.</p>
+        <p><strong>Why are my adjusted and adjusted/weighted list sizes different from the raw list size?</strong><br>
+        adjusted/weighted list sizes reflect modifications due to PCN membership changes and other practical factors, while adjusted/weighted list sizes account for differing healthcare needs. Both metrics are calculated using complex formulas by NHS England and typically result in higher values than the raw list sizes.</p>
         
         <p><strong>How is ARRS funding calculated?</strong><br>
-        ARRS funding is distributed based on a PCN's weighted population share from a total of £1.7bn for 2025/26. Although final allocations are determined by NHS England, this calculator provides an estimate based on the weighted list size.</p>
+        ARRS funding is distributed based on a PCN's adjusted/weighted population share from a total of £1.7bn for 2025/26. Although final allocations are determined by NHS England, this calculator provides an estimate based on the adjusted/weighted list size.</p>
     </div>
 </div>
 

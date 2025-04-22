@@ -2,12 +2,8 @@ const regionSelect = document.getElementById('region');
 const pcnDisplayInput = document.getElementById('pcn-display');
 const pcnNameHidden = document.getElementById('pcn-name-hidden');
 const pcnCodeInput = document.getElementById('pcn-code');
-const rawListSizeInput = document.getElementById('raw-list-size');
-const adjustedListSizeInput = document.getElementById('adjusted-list-size');
-const weightedListSizeInput = document.getElementById('weighted-list-size');
-const historicalAdjustmentFactorInput = document.getElementById('historical-adjustment-factor');
-const historicalWeightingFactorInput = document.getElementById('historical-weighting-factor');
-const includeHistoricalFactors = document.getElementById('include-historical-factors');
+const rawInput        = document.getElementById('raw-list-size');
+const adjustedPopulationInput = document.getElementById('adjusted-population');
 const careHomeBeds = document.getElementById('care-home-beds');
 const iifAchievedPointsInput = document.getElementById('iif-achieved-points');
 const includeCorePcn = document.getElementById('include-core-pcn');
@@ -21,7 +17,6 @@ const includeArrs = document.getElementById('include-arrs');
 const includeIif = document.getElementById('include-iif');
 const includeParticipation = document.getElementById('include-participation');
 const calculateBtn = document.getElementById('calculate-btn');
-const fillExampleBtn = document.getElementById('fill-example');
 const loadingSpinner = document.getElementById('loading-spinner');
 const resultsContainer = document.getElementById('results-container');
 const totalFundingSpan = document.getElementById('total-funding');
@@ -33,6 +28,7 @@ const fundingChart = document.getElementById('funding-chart');
 const pcnModal = document.getElementById('pcn-modal');
 const pcnModalSearch = document.getElementById('pcn-modal-search');
 const pcnList = document.getElementById('pcn-list');
+const icbNameSelect = document.getElementById('icb-name');
 const exportPdfBtn = document.getElementById('export-pdf');
 const exportCsvBtn = document.getElementById('export-csv');
 const tabs = document.querySelectorAll('.tab');
@@ -58,13 +54,12 @@ const FUNDING_RATES = {
 
 let pcnData = [];
 let pieChart = null;
-let savedHistoricalAdjustmentFactor = DEFAULT_ADJUSTMENT_FACTOR * 100;
-let savedHistoricalWeightingFactor = DEFAULT_WEIGHTING_FACTOR * 100;
 
 document.addEventListener('DOMContentLoaded', function() {
     try {
         loadPcnDataFromCsv();
         setupEventListeners();
+        populateIcbNames();
     } catch (error) {
         console.error('Initialization error:', error);
         alert('Failed to initialize the calculator. Please check the console for details.');
@@ -88,6 +83,7 @@ async function loadPcnDataFromCsv() {
         }
         console.log('PCN Data Loaded:', pcnData);
         populateRegions();
+        populateIcbNames();
     } catch (error) {
         console.error('Error loading PCN data:', error);
         alert(`Failed to load PCN data: ${error.message}. Please check the console for details and ensure the CSV file is available.`);
@@ -97,71 +93,70 @@ async function loadPcnDataFromCsv() {
 }
 
 function parseCsvData(csvText) {
-    const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
+    const lines   = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
     const headers = lines[0].split(',').map(h => h.replace(/^\uFEFF/, '').trim());
 
-    console.log('Parsed CSV headers:', headers);
-    
+    // find the columns
     const practiceCodeIndex = headers.findIndex(h => h === 'Practice Code');
     const practiceNameIndex = headers.findIndex(h => h === 'Practice Name');
-    const pcnCodeIndex = headers.findIndex(h => h === 'PCN Code');
-    const pcnNameIndex = headers.findIndex(h => h === 'PCN Name');
-    const regionIndex = headers.findIndex(h => h === 'Region');
-    const rawListSize2025Index = headers.findIndex(h => h === 'Raw list size as of 01/01/25');
-    const rawListSizeIndex = headers.findIndex(h => h === 'Raw list size 2024/25');
-    const adjustedPopulationIndex = headers.findIndex(h => h === 'Adjusted Population 2024/25');
-    const weightedPopulationIndex = headers.findIndex(h => h === 'weighted population 2024/25');
+    const pcnCodeIndex      = headers.findIndex(h => h === 'PCN Code');
+    const pcnNameIndex      = headers.findIndex(h => h === 'PCN Name');
+    const icbNameIndex      = headers.findIndex(h => h === 'ICB Name');
+    const regionIndex       = headers.findIndex(h => h === 'Region');
+    const rawIndex          = headers.findIndex(h => h === 'Raw list size');
+    const adjIndex          = headers.findIndex(h => h === 'Adjusted Population');
 
+    // abort if any required column is missing
     const missing = [];
     if (practiceCodeIndex < 0) missing.push('Practice Code');
     if (practiceNameIndex < 0) missing.push('Practice Name');
-    if (pcnCodeIndex < 0) missing.push('PCN Code');
-    if (pcnNameIndex < 0) missing.push('PCN Name');
-    if (regionIndex < 0) missing.push('Region');
-    if (rawListSize2025Index < 0) missing.push('Raw list size as of 01/01/25');
+    if (pcnCodeIndex      < 0) missing.push('PCN Code');
+    if (pcnNameIndex      < 0) missing.push('PCN Name');
+    if (icbNameIndex      < 0) missing.push('ICB Name');
+    if (regionIndex       < 0) missing.push('Region');
+    if (rawIndex          < 0) missing.push('Raw list size');
+    if (adjIndex          < 0) missing.push('Adjusted Population');
     if (missing.length) {
         console.error('Missing required CSV columns:', missing);
         alert('Error: Missing required columns:\n' + missing.join(', '));
         return [];
     }
 
-    const pcns = [];
+    const pcns   = [];
     const pcnMap = new Map();
 
+    // iterate rows
     for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',');
-        if (values.length <= rawListSize2025Index) continue;
+        if (values.length <= rawIndex) continue;
 
-        const practiceCode = values[practiceCodeIndex]?.trim() || '';
-        const practiceName = values[practiceNameIndex]?.trim() || '';
-        const pcnCode = values[pcnCodeIndex]?.trim() || '';
-        const pcnName = values[pcnNameIndex]?.trim() || '';
-        const region = values[regionIndex]?.trim() || '';
-        const raw2025 = parseFloat(values[rawListSize2025Index]) || 0;
-        const raw2024 = parseFloat(values[rawListSizeIndex] || '') || 0;
-        const adjPop = parseFloat(values[adjustedPopulationIndex] || '') || 0;
-        const wtPop = parseFloat(values[weightedPopulationIndex] || '') || 0;
-
-        const histAdj = raw2024 > 0 ? (adjPop/raw2024) - 1 : DEFAULT_ADJUSTMENT_FACTOR;
-        const histWt = raw2024 > 0 ? (wtPop /raw2024) - 1 : DEFAULT_WEIGHTING_FACTOR;
-
+        // 1) pull out your key identifiers first
+        const pcnCode      = values[pcnCodeIndex]?.trim()      || '';
+        const pcnName      = values[pcnNameIndex]?.trim()      || '';
+        const icbName      = values[icbNameIndex]?.trim()      || '';
+        const region       = values[regionIndex]?.trim()       || '';
+        // skip rows without a valid PCN
         if (!pcnCode || !pcnName) continue;
 
+        // 2) initialize the PCN entry once
+        if (!pcnMap.has(pcnCode)) {
+            pcnMap.set(pcnCode, { pcnCode, pcnName, icbName, region, practices: [] });
+            pcns.push(pcnMap.get(pcnCode));
+        }
+
+        // 3) now parse the practice‐level fields
+        const practiceCode = values[practiceCodeIndex]?.trim() || '';
+        const practiceName = values[practiceNameIndex]?.trim() || '';
+        const raw2025      = parseFloat(values[rawIndex])      || 0;
+        const adjPop       = parseFloat(values[adjIndex])      || 0;
+
+        // 4) add this practice
         const practice = {
             practiceCode,
             practiceName,
-            rawListSize: raw2025,
-            rawListSize2025: raw2025,
-            adjustedPopulation: adjPop,
-            weightedPopulation: wtPop,
-            historicalAdjustmentFactor: histAdj,
-            historicalWeightingFactor: histWt
+            raw:        raw2025,
+            adjustedPopulation: adjPop
         };
-
-        if (!pcnMap.has(pcnCode)) {
-            pcnMap.set(pcnCode, { pcnCode, pcnName, region, practices: [] });
-            pcns.push(pcnMap.get(pcnCode));
-        }
         pcnMap.get(pcnCode).practices.push(practice);
     }
 
@@ -189,6 +184,89 @@ function populateRegions() {
     });
 }
 
+function populateIcbNames() {
+    const select = document.getElementById('icb-name');
+
+    // 1) Clear any existing options (keep the first "All ICBs..." one)
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // 2) Only these approved ICBs:
+    const allowedIcbNames = [
+      "NHS Bedfordshire, Luton and Milton Keynes Integrated Care Board",
+      "NHS Cambridgeshire and Peterborough Integrated Care Board",
+      "NHS Hertfordshire and West Essex Integrated Care Board",
+      "NHS Mid and South Essex Integrated Care Board",
+      "NHS Norfolk and Waveney Integrated Care Board",
+      "NHS Suffolk and North East Essex Integrated Care Board",
+      "NHS North Central London Integrated Care Board",
+      "NHS North East London Integrated Care Board",
+      "NHS North West London Integrated Care Board",
+      "NHS South East London Integrated Care Board",
+      "NHS South West London Integrated Care Board",
+      "NHS Birmingham and Solihull Integrated Care Board",
+      "NHS Black Country Integrated Care Board",
+      "NHS Coventry and Warwickshire Integrated Care Board",
+      "NHS Derby and Derbyshire Integrated Care Board",
+      "NHS Herefordshire and Worcestershire Integrated Care Board",
+      "NHS Leicester, Leicestershire and Rutland Integrated Care Board",
+      "NHS Lincolnshire Integrated Care Board",
+      "NHS Northamptonshire Integrated Care Board",
+      "NHS Nottingham and Nottinghamshire Integrated Care Board",
+      "NHS Shropshire, Telford and Wrekin Integrated Care Board",
+      "NHS Staffordshire and Stoke-on-Trent Integrated Care Board",
+      "NHS Humber and North Yorkshire Integrated Care Board",
+      "NHS North East and North Cumbria Integrated Care Board",
+      "NHS South Yorkshire Integrated Care Board",
+      "NHS West Yorkshire Integrated Care Board",
+      "NHS Cheshire and Merseyside Integrated Care Board",
+      "NHS Greater Manchester Integrated Care Board",
+      "NHS Lancashire and South Cumbria Integrated Care Board",
+      "NHS Buckinghamshire, Oxfordshire and Berkshire West Integrated Care Board",
+      "NHS Frimley Integrated Care Board",
+      "NHS Hampshire and Isle of Wight Integrated Care Board",
+      "NHS Kent and Medway Integrated Care Board",
+      "NHS Surrey Heartlands ICB",
+      "NHS Sussex ICB",
+      "NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board",
+      "NHS Bristol, North Somerset and South Gloucestershire Integrated Care Board",
+      "NHS Cornwall and the Isles of Scilly Integrated Care Board",
+      "NHS Devon Integrated Care Board",
+      "NHS Dorset Integrated Care Board",
+      "NHS Gloucestershire Integrated Care Board",
+      "NHS Somerset Integrated Care Board"
+    ];
+
+
+  // 3) Which region (if any) is selected?
+  const selectedRegion = regionSelect.value;
+
+  // 4) Build a Set of ICBs that:
+  //    • appear in pcnData
+  //    • match the selected region (or all if none selected)
+  //    • are in your allowedIcbNames list
+  const icbSet = new Set();
+  pcnData.forEach(pcn => {
+    if (
+      allowedIcbNames.includes(pcn.icbName) &&
+      (!selectedRegion || pcn.region === selectedRegion)
+    ) {
+      icbSet.add(pcn.icbName);
+    }
+  });
+
+  // 5) Sort and append
+  Array.from(icbSet)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+}
+
 function setupEventListeners() {
     console.log('Setting up event listeners...');
     if (!calculateBtn) {
@@ -206,10 +284,18 @@ function setupEventListeners() {
         pcnDisplayInput.value = '';
         pcnNameHidden.value = '';
         pcnCodeInput.value = '';
+        populateIcbNames();
     });
+
+    icbNameSelect.addEventListener('change', () => {
+        populateIcbNames();
+      });
+
     pcnDisplayInput.addEventListener('click', openPcnModal);
     calculateBtn.addEventListener('click', calculateFunding);
-    fillExampleBtn.addEventListener('click', fillExampleData);
+
+    const resetBtn = document.getElementById('reset-btn');
+    resetBtn.addEventListener('click', resetData);
 
     exportPdfBtn.addEventListener('click', () => {
         console.log('Export PDF button clicked');
@@ -220,21 +306,22 @@ function setupEventListeners() {
         const pcn = pcnNameHidden.value || '—';
         const date = new Date().toLocaleDateString('en-GB');
         document.querySelector('.print-meta').textContent = `PCN: ${pcn}  |  Date: ${date}`;
+        
         const pcnSelected = pcnData.find(p => p.pcnCode === pcnCodeInput.value) || { practices: [] };
+        
         const practiceListSizes = [
             {
                 name: 'PCN Total',
-                raw: parseFloat(rawListSizeInput.value) || 0,
-                adjusted: parseFloat(adjustedListSizeInput.value) || 0,
-                weighted: parseFloat(weightedListSizeInput.value) || 0
+                raw:      parseFloat(rawInput.value)         || 0,
+                adjusted: parseFloat(adjustedPopulationInput.value)  || 0
             },
             ...pcnSelected.practices.map(practice => ({
-                name: practice.practiceName || 'Unknown Practice',
-                raw: practice.rawListSize || 0,
-                adjusted: practice.adjustedPopulation || 0,
-                weighted: practice.weightedPopulation || 0
+                name:     practice.practiceName   || 'Unknown Practice',
+                raw:      practice.raw    || 0,
+                adjusted: practice.adjustedPopulation || 0
             }))
         ];
+
         console.log('practiceListSizes for PDF export:', practiceListSizes);
         if (practiceListSizes.length === 1) {
             console.warn('Only PCN Total available; no practice data for PCN:', pcnCodeInput.value);
@@ -277,21 +364,6 @@ function setupEventListeners() {
         }
     });
 
-    includeHistoricalFactors.addEventListener('change', updateListSizes);
-    rawListSizeInput.addEventListener('input', updateListSizes);
-    historicalAdjustmentFactorInput.addEventListener('input', e => {
-        savedHistoricalAdjustmentFactor = parseFloat(e.target.value) || 0;
-        updateListSizes();
-    });
-    historicalWeightingFactorInput.addEventListener('input', e => {
-        savedHistoricalWeightingFactor = parseFloat(e.target.value) || 0;
-        updateListSizes();
-    });
-
-    includeCasp.addEventListener('change', calculateFunding);
-    includeCaip.addEventListener('change', calculateFunding);
-    caipDomain1.addEventListener('change', calculateFunding);
-    caipDomain2.addEventListener('change', calculateFunding);
 
     tabs.forEach(tab => {
         tab.addEventListener('click', function() {
@@ -329,14 +401,23 @@ function setupEventListeners() {
 }
 
 function openPcnModal() {
-    const selectedRegion = regionSelect.value;
-    pcnList.innerHTML = '';
-    let filteredPcns = pcnData;
-    if (selectedRegion) {
-        filteredPcns = pcnData.filter(pcn => pcn.region === selectedRegion);
-    }
-    filteredPcns.sort((a, b) => a.pcnName.localeCompare(b.pcnName));
-    filteredPcns.forEach(pcn => {
+        const selectedRegion = regionSelect.value;
+        const selectedIcb    = icbNameSelect.value;
+        pcnList.innerHTML = '';
+    
+        // Start with all PCNs, then filter by region and/or ICB
+        let filteredPcns = pcnData;
+        if (selectedRegion) {
+          filteredPcns = filteredPcns.filter(pcn => pcn.region === selectedRegion);
+        }
+        if (selectedIcb) {
+          filteredPcns = filteredPcns.filter(pcn => pcn.icbName === selectedIcb);
+        }
+    
+        // Now sort the final list
+        filteredPcns.sort((a, b) => a.pcnName.localeCompare(b.pcnName));
+
+        filteredPcns.forEach(pcn => {
         const pcnItem = document.createElement('div');
         pcnItem.className = 'pcn-item';
         pcnItem.textContent = pcn.pcnName;
@@ -370,8 +451,8 @@ function filterPcnList(event) {
 
 function selectPcn(pcnCode, pcnName) {
     pcnDisplayInput.value = pcnName;
-    pcnNameHidden.value = pcnName;
-    pcnCodeInput.value = pcnCode;
+    pcnNameHidden.value   = pcnName;
+    pcnCodeInput.value    = pcnCode;
 
     const pcn = pcnData.find(p => p.pcnCode === pcnCode);
     if (!pcn) {
@@ -380,77 +461,18 @@ function selectPcn(pcnCode, pcnName) {
         return;
     }
 
-    let totalRaw2024 = 0;
-    let totalRaw2025 = 0;
-    let totalAdjusted2024 = 0;
-    let totalWeighted2024 = 0;
+    let totalRaw = 0;
+    let totalAdj = 0;
 
     pcn.practices.forEach(practice => {
-        totalRaw2024 += parseFloat(practice.rawListSize) || 0;
-        totalRaw2025 += parseFloat(practice.rawListSize2025) || 0;
-        totalAdjusted2024 += parseFloat(practice.adjustedPopulation) || 0;
-        totalWeighted2024 += parseFloat(practice.weightedPopulation) || 0;
+        totalRaw += parseFloat(practice.raw)       || 0;
+        totalAdj += parseFloat(practice.adjustedPopulation)|| 0;
     });
 
-    console.log('selectPcn:', { pcnCode, pcnName, totalRaw2025, totalRaw2024 });
-
-    if (totalRaw2025 <= 0) {
-        console.warn('No valid raw list size for 2025, using fallback.');
-        totalRaw2025 = totalRaw2024 > 0 ? totalRaw2024 : 10000;
-        alert('Warning: No 2025 population data available. Using 2024/25 data or default.');
-    }
-
-    const pcnAdjustmentFactor = totalRaw2024 > 0
-        ? (totalAdjusted2024 / totalRaw2024 - 1) * 100
-        : DEFAULT_ADJUSTMENT_FACTOR * 100;
-
-    const pcnWeightingFactor = totalRaw2024 > 0
-        ? (totalWeighted2024 / totalRaw2024 - 1) * 100
-        : DEFAULT_WEIGHTING_FACTOR * 100;
-
-    rawListSizeInput.value = Math.round(totalRaw2025);
-    historicalAdjustmentFactorInput.value = pcnAdjustmentFactor.toFixed(2);
-    historicalWeightingFactorInput.value = pcnWeightingFactor.toFixed(2);
-
-    savedHistoricalAdjustmentFactor = pcnAdjustmentFactor;
-    savedHistoricalWeightingFactor = pcnWeightingFactor;
-
-    console.log('Input Values:', {
-        rawListSize: rawListSizeInput.value,
-        adjustmentFactor: historicalAdjustmentFactorInput.value,
-        weightingFactor: historicalWeightingFactorInput.value
-    });
-
-    updateListSizes();
+    rawInput.value         = Math.round(totalRaw);
+    adjustedPopulationInput.value  = Math.round(totalAdj);
 }
 
-function updateListSizes() {
-    const rawListSize = parseFloat(rawListSizeInput.value) || 0;
-    const useHistoricalFactors = includeHistoricalFactors.checked;
-
-    const historicalAdjustmentFactor = useHistoricalFactors ?
-        (parseFloat(savedHistoricalAdjustmentFactor) || DEFAULT_ADJUSTMENT_FACTOR * 100) / 100 :
-        0;
-
-    const historicalWeightingFactor = useHistoricalFactors ?
-        (parseFloat(savedHistoricalWeightingFactor) || DEFAULT_WEIGHTING_FACTOR * 100) / 100 :
-        0;
-
-    const adjustedListSize = rawListSize * (1 + historicalAdjustmentFactor);
-    const weightedListSize = rawListSize * (1 + historicalWeightingFactor);
-
-    console.log('updateListSizes:', {
-        rawListSize,
-        useHistoricalFactors,
-        historicalAdjustmentFactor,
-        historicalWeightingFactor,
-        adjustedListSize,
-        weightedListSize
-    });
-
-    adjustedListSizeInput.value = Math.round(adjustedListSize);
-    weightedListSizeInput.value = Math.round(weightedListSize);
-}
 
 function calculateFunding() {
     console.log('calculateFunding called');
@@ -460,11 +482,10 @@ function calculateFunding() {
         return;
     }
 
-    const rawListSize = parseFloat(rawListSizeInput.value) || 0;
-    const adjustedListSize = parseFloat(adjustedListSizeInput.value) || 0;
-    const weightedListSize = parseFloat(weightedListSizeInput.value) || 0;
-    const careHomeBedCount = parseFloat(careHomeBeds.value) || 0;
-    const iifAchievedPoints = parseFloat(iifAchievedPointsInput.value) || 0;
+    const raw      = parseFloat(rawInput.value)         || 0;
+    const adjusted = parseFloat(adjustedPopulationInput.value) || 0;
+    const careHomeBedCount = parseFloat(careHomeBeds.value)    || 0;
+    const iifPoints        = parseFloat(iifAchievedPointsInput.value) || 0;
     const includeCorePcnChecked = includeCorePcn.checked;
     const includeExtendedAccessChecked = includeExtendedAccess.checked;
     const includeCareHomeChecked = includeCareHome.checked;
@@ -476,48 +497,61 @@ function calculateFunding() {
     const includeIifChecked = includeIif.checked;
     const includeParticipationChecked = includeParticipation.checked;
 
-    const corePcnFunding = includeCorePcnChecked ? 
-        (FUNDING_RATES.CORE_PCN_RAW * rawListSize) + (FUNDING_RATES.CORE_PCN_ADJUSTED * adjustedListSize) : 
-        0;
+    // Core PCN funding: raw + adjusted
+    const coreFunding = includeCorePcn.checked
+        ? FUNDING_RATES.CORE_PCN_RAW      * raw
+          + FUNDING_RATES.CORE_PCN_ADJUSTED * adjusted
+        : 0;
         
-    const extendedAccessFunding = includeExtendedAccessChecked ? 
-        FUNDING_RATES.EXTENDED_ACCESS * adjustedListSize : 
-        0;
+    // Enhanced access and CASP both use adjusted
+    const extendedAccess = includeExtendedAccess.checked
+        ? FUNDING_RATES.EXTENDED_ACCESS * adjusted
+        : 0;
         
     const careHomeFunding = includeCareHomeChecked ? 
         FUNDING_RATES.CARE_HOME_PREMIUM * careHomeBedCount : 
         0;
         
-    const caspFunding = includeCaspChecked ? 
-        FUNDING_RATES.CASP * adjustedListSize : 
-        0;
+    const casp = includeCasp.checked
+        ? FUNDING_RATES.CASP * adjusted
+        : 0;
         
-    const caipFunding = includeCaipChecked ? 
-        ((caipDomain1Checked ? FUNDING_RATES.CAIP_PER_DOMAIN : 0) + 
-         (caipDomain2Checked ? FUNDING_RATES.CAIP_PER_DOMAIN : 0)) * adjustedListSize : 
-        0;
+    // CAIP still per domain on adjusted
+    const caipDomains = (caipDomain1.checked ? 1 : 0)
+                       + (caipDomain2.checked ? 1 : 0);
+    const caip = includeCaip.checked
+        ? caipDomains * FUNDING_RATES.CAIP_PER_DOMAIN * adjusted
+        : 0;
         
-    const arrsFunding = includeArrsChecked ?
-        FUNDING_RATES.ARRS_RATE * weightedListSize :
-        0;
+    // ARRS and Participation now use adjusted instead of weighted
+    const arrs = includeArrs.checked
+        ? FUNDING_RATES.ARRS_RATE * adjusted
+        : 0;
 
-    const iifFunding = includeIifChecked ? 
-        FUNDING_RATES.IIF_POINT_VALUE * iifAchievedPoints : 
-        0;
+        const iifFunding = includeIifChecked
+        ? FUNDING_RATES.IIF_POINT_VALUE * iifPoints
+        : 0;
         
-    const participationFunding = includeParticipationChecked ? 
-        FUNDING_RATES.PARTICIPATION_FUND * weightedListSize : 
-        0;
+    const participation = includeParticipation.checked
+        ? FUNDING_RATES.PARTICIPATION_FUND * adjusted
+        : 0;
 
-    const totalFunding = corePcnFunding + extendedAccessFunding + careHomeFunding + 
-                        caspFunding + caipFunding + arrsFunding + iifFunding + participationFunding;
+    // sum all components
+    const totalFunding = coreFunding +
+                         extendedAccess +
+                         casp +
+                         caip +
+                         arrs +
+                         (includeIif.checked ? FUNDING_RATES.IIF_POINT_VALUE * iifPoints : 0) +
+                         (includeCareHome.checked ? FUNDING_RATES.CARE_HOME_PREMIUM * careHomeBedCount : 0) +
+                         (includeParticipation.checked ? participation : 0);
 
     const monthlyFunding = totalFunding / 12;
     const quarterlyFunding = totalFunding / 4;
 
-    totalFundingSpan.textContent = formatCurrency(totalFunding);
-    monthlyFundingSpan.textContent = formatCurrency(monthlyFunding);
-    quarterlyFundingSpan.textContent = formatCurrency(quarterlyFunding);
+    totalFundingSpan.textContent     = formatCurrency(totalFunding);
+    monthlyFundingSpan.textContent   = formatCurrency(totalFunding / 12);
+    quarterlyFundingSpan.textContent = formatCurrency(totalFunding / 4);
 
     fundingComponentsTable.innerHTML = '';
 
@@ -526,20 +560,20 @@ function calculateFunding() {
     if (includeCorePcnChecked) {
         addFundingComponent(
             'Core PCN Funding',
-            corePcnFunding,
-            `£${FUNDING_RATES.CORE_PCN_RAW} × ${rawListSize.toLocaleString()} (raw) + ` +
-            `£${FUNDING_RATES.CORE_PCN_ADJUSTED} × ${adjustedListSize.toLocaleString()} (adjusted)`
+            coreFunding,
+            `£${FUNDING_RATES.CORE_PCN_RAW} × ${raw.toLocaleString()} (raw) + ` +
+            `£${FUNDING_RATES.CORE_PCN_ADJUSTED} × ${adjusted.toLocaleString()} (adjusted)`
         );
-        runningTotal += corePcnFunding;
+        runningTotal += coreFunding;
     }
     
     if (includeExtendedAccessChecked) {
         addFundingComponent(
             'Enhanced Access Payment',
-            extendedAccessFunding,
-            `£${FUNDING_RATES.EXTENDED_ACCESS} × ${adjustedListSize.toLocaleString()} (adjusted)`
+            extendedAccess,
+            `£${FUNDING_RATES.EXTENDED_ACCESS} × ${adjusted.toLocaleString()} (adjusted)`
         );
-        runningTotal += extendedAccessFunding;
+        runningTotal += extendedAccess;
     }
     
     if (includeCareHomeChecked) {
@@ -554,10 +588,10 @@ function calculateFunding() {
     if (includeCaspChecked) {
         addFundingComponent(
             'Capacity and Access Support Payment',
-            caspFunding,
-            `£${FUNDING_RATES.CASP} × ${adjustedListSize.toLocaleString()} (adjusted)`
+            casp,
+            `£${FUNDING_RATES.CASP} × ${adjusted.toLocaleString()} (adjusted)`
         );
-        runningTotal += caspFunding;
+        runningTotal += casp;
     }
     
     if (includeCaipChecked) {
@@ -565,26 +599,26 @@ function calculateFunding() {
         const caipRate = caipDomains * FUNDING_RATES.CAIP_PER_DOMAIN;
         addFundingComponent(
             'Capacity and Access Improvement Payment',
-            caipFunding,
-            `£${caipRate.toFixed(3)} × ${adjustedListSize.toLocaleString()} (adjusted, ${caipDomains} domain${caipDomains === 1 ? '' : 's'})`
+            caip,
+            `£${caipRate.toFixed(3)} × ${adjusted.toLocaleString()} (adjusted, ${caipDomains} domain${caipDomains === 1 ? '' : 's'})`
         );
-        runningTotal += caipFunding;
+        runningTotal += caip;
     }
     
     if (includeArrsChecked) {
         addFundingComponent(
             'ARRS Funding',
-            arrsFunding,
-            `£${FUNDING_RATES.ARRS_RATE} × ${weightedListSize.toLocaleString()} (weighted)`
+            arrs,
+            `£${FUNDING_RATES.ARRS_RATE} × ${adjusted.toLocaleString()} (weighted)`
         );
-        runningTotal += arrsFunding;
+        runningTotal += arrs;
     }
     
     if (includeIifChecked) {
         addFundingComponent(
             'IIF Achievement',
             iifFunding,
-            `£${FUNDING_RATES.IIF_POINT_VALUE} × ${iifAchievedPoints.toLocaleString()} (points)`
+            `£${FUNDING_RATES.IIF_POINT_VALUE} × ${iifPoints.toLocaleString()} (points)`
         );
         runningTotal += iifFunding;
     }
@@ -592,10 +626,10 @@ function calculateFunding() {
     if (includeParticipationChecked) {
         addFundingComponent(
             'Participation Fund (Practice Payment)',
-            participationFunding,
-            `£${FUNDING_RATES.PARTICIPATION_FUND} × ${weightedListSize.toLocaleString()} (weighted)`
+            participation,
+            `£${FUNDING_RATES.PARTICIPATION_FUND} × ${adjusted.toLocaleString()} (weighted)`
         );
-        runningTotal += participationFunding;
+        runningTotal += participation;
     }
 
     const totalRow = document.createElement('tr');
@@ -611,25 +645,25 @@ function calculateFunding() {
     fundingComponentsTable.appendChild(totalRow);
 
     updatePracticeBreakdown(
-        rawListSize,
-        corePcnFunding,
-        extendedAccessFunding,
+        raw,
+        coreFunding,
+        extendedAccess,
         careHomeFunding,
-        caspFunding + caipFunding,
-        arrsFunding,
+        casp + caip,
+        arrs,
         iifFunding,
-        participationFunding,
+        participation,
         includeParticipationChecked
     );
 
     updateFundingChart(
-        includeCorePcnChecked ? corePcnFunding : 0,
-        includeExtendedAccessChecked ? extendedAccessFunding : 0,
+        includeCorePcnChecked ? coreFunding : 0,
+        includeExtendedAccessChecked ? extendedAccess : 0,
         includeCareHomeChecked ? careHomeFunding : 0,
-        (includeCaspChecked || includeCaipChecked) ? caspFunding + caipFunding : 0,
-        includeArrsChecked ? arrsFunding : 0,
+        (includeCaspChecked || includeCaipChecked) ? casp + caip : 0,
+        includeArrsChecked ? arrs : 0,
         includeIifChecked ? iifFunding : 0,
-        includeParticipationChecked ? participationFunding : 0
+        includeParticipationChecked ? participation : 0
     );
 
     resultsContainer.style.display = 'block';
@@ -649,7 +683,7 @@ function addFundingComponent(name, amount, formula) {
 }
 
 function updatePracticeBreakdown(
-    totalRawListSize,
+    totalraw,
     coreTotal,
     extTotal,
     careTotal,
@@ -700,7 +734,7 @@ function updatePracticeBreakdown(
     pcn.practices
         .sort((a, b) => a.practiceName.localeCompare(b.practiceName))
         .forEach(practice => {
-            const share = practice.rawListSize / totalRawListSize;
+            const share = practice.raw / totalraw;
             const coreShare = coreTotal * share;
             const extShare = extTotal * share;
             const careShare = careTotal * share;
@@ -868,32 +902,44 @@ function updateFundingChart(corePcn, extendedAccess, careHome, capacity, arrs, i
     }
 }
 
-function fillExampleData() {
-    regionSelect.value = '';
-    pcnDisplayInput.value = 'Example PCN';
-    pcnNameHidden.value = 'EXAMPLE';
-    pcnCodeInput.value = 'EXAMPLE';
-    rawListSizeInput.value = '50000';
-    historicalAdjustmentFactorInput.value = '5.00';
-    historicalWeightingFactorInput.value = '10.00';
-    savedHistoricalAdjustmentFactor = 5.00;
-    savedHistoricalWeightingFactor = 10.00;
-    updateListSizes();
-    careHomeBeds.value = '120';
-    iifAchievedPointsInput.value = '45';
-    includeHistoricalFactors.checked = true;
-    includeCorePcn.checked = true;
-    includeExtendedAccess.checked = true;
-    includeCareHome.checked = true;
-    includeCasp.checked = true;
-    includeCaip.checked = true;
-    caipDomain1.checked = true;
-    caipDomain2.checked = true;
-    includeArrs.checked = true;
-    includeIif.checked = true;
-    includeParticipation.checked = false;
-    calculateFunding();
-}
+function resetData() {
+    // Clear all inputs
+    regionSelect.value             = '';
+    icbNameSelect.value            = '';
+    pcnDisplayInput.value          = '';
+    pcnNameHidden.value            = '';
+    pcnCodeInput.value             = '';
+    rawInput.value         = '';
+    adjustedPopulationInput.value  = '';
+    careHomeBeds.value             = '';
+    iifAchievedPointsInput.value   = '';
+    
+    // Uncheck all the funding checkboxes
+    [
+      includeCorePcn,
+      includeExtendedAccess,
+      includeCareHome,
+      includeCasp,
+      includeCaip,
+      caipDomain1,
+      caipDomain2,
+      includeArrs,
+      includeIif,
+      includeParticipation
+    ].forEach(cb => cb.checked = false);
+  
+    // Hide/reset results
+    totalFundingSpan.textContent     = '£0.00';
+    monthlyFundingSpan.textContent   = '£0.00';
+    quarterlyFundingSpan.textContent = '£0.00';
+    fundingComponentsTable.innerHTML = '';
+    practiceBreakdownTable.innerHTML = '';
+    if (pieChart) {
+      pieChart.destroy();
+      pieChart = null;
+    }
+    resultsContainer.style.display = 'none';
+  }
 
 function formatCurrency(value) {
     return '£' + value.toLocaleString('en-GB', {
