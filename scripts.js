@@ -624,7 +624,7 @@ function calculateFunding() {
         addFundingComponent(
             'ARRS Funding',
             arrs,
-            `£${FUNDING_RATES.ARRS_RATE} × ${adjusted.toLocaleString()} (weighted)`
+            `£${FUNDING_RATES.ARRS_RATE} × ${adjusted.toLocaleString()} (adjusted)`
         );
         runningTotal += arrs;
     }
@@ -642,7 +642,7 @@ function calculateFunding() {
         addFundingComponent(
             'Participation Fund (Practice Payment)',
             participation,
-            `£${FUNDING_RATES.PARTICIPATION_FUND} × ${adjusted.toLocaleString()} (weighted)`
+            `£${FUNDING_RATES.PARTICIPATION_FUND} × ${adjusted.toLocaleString()} (adjusted)`
         );
         runningTotal += participation;
     }
