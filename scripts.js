@@ -280,16 +280,20 @@ function setupEventListeners() {
         return;
     }
 
-    regionSelect.addEventListener('change', () => {
+    function clearPcnSelection() {
         pcnDisplayInput.value = '';
         pcnNameHidden.value = '';
         pcnCodeInput.value = '';
+    }
+
+    regionSelect.addEventListener('change', () => {
+        clearPcnSelection();
         populateIcbNames();
     });
-
+    
     icbNameSelect.addEventListener('change', () => {
-        populateIcbNames();
-      });
+        clearPcnSelection();
+    });
 
     pcnDisplayInput.addEventListener('click', openPcnModal);
     calculateBtn.addEventListener('click', calculateFunding);
